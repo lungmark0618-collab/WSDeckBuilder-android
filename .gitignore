@@ -1,0 +1,13 @@
+# 建置產物
+build/
+.gradle/
+local.properties
+
+# 卡片資料不進版控（著作權考量，與 iOS 版同樣的處理）。
+# 用 ../WSDeckBuilder/tools/fetch_published_cards.py --out app/src/main/assets 取得
+app/src/main/assets/*_cards.json
+
+.DS_Store
+.idea/
+*.iml
+captures/
