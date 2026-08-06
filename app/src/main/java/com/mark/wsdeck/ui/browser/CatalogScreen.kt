@@ -3,6 +3,8 @@ package com.mark.wsdeck.ui.browser
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -14,10 +16,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -76,7 +79,6 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
                 activeDeckUuid = uuid
                 prefs.activeDeckUuid = uuid
             },
-            onShowContents = { showDeckQuickView = true },
         )
         SearchBarRow(
             keyword = query.keyword,
@@ -89,6 +91,13 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
             onOpenFilter = { showFilter = true },
         )
         ActiveFilterBar(query, repo.snapshot.sets) { query = SearchQuery(titleCode = query.titleCode) }
+
+        // 加卡加到一半想確認「現在到底放了哪些」，不必離開圖鑑切去牌組分頁。
+        // ⚠ 這不是 iOS 有的功能——iOS 圖鑑只靠格子上的張數徽章，沒有現成的
+        // 縮圖列可看，這是額外補的：直接貼在卡片結果上方，點一下拉出完整清單。
+        activeDeck?.let { deck ->
+            ActiveDeckStrip(deck, repo) { showDeckQuickView = true }
+        }
 
         if (showsGallery) {
             TitleGallery(repo.snapshot.sets, repo.snapshot.cards.size) {
@@ -107,9 +116,6 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
         CardDetailSheet(card, repo.titleCode(card)) { detail = null }
     }
 
-    // 加卡加到一半想確認「現在到底放了哪些」，不必離開圖鑑切去牌組分頁。
-    // ⚠ 這不是 iOS 有的功能——iOS 圖鑑只靠格子上的張數徽章跟這裡的 N/50，
-    // 沒有現成的清單可看，這是額外補的。
     if (showDeckQuickView && activeDeck != null) {
         ActiveDeckQuickView(activeDeck, repo, deckRepo) { showDeckQuickView = false }
     }
@@ -134,7 +140,6 @@ private fun ActiveDeckPickerRow(
     decks: List<DeckWithEntries>,
     activeDeck: DeckWithEntries?,
     onSelect: (String) -> Unit,
-    onShowContents: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Row(
@@ -178,23 +183,84 @@ private fun ActiveDeckPickerRow(
                     }
                 }
             }
-            Spacer(Modifier.weight(1f))
-            activeDeck?.let {
-                // 點張數可以直接看目前放了哪些卡，不必離開圖鑑
-                Row(
-                    Modifier.clickable(onClick = onShowContents),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Filled.Visibility, contentDescription = "查看目前牌組內容",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "${it.totalCount}/50",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (it.totalCount == 50) MaterialTheme.colorScheme.primary
-                               else MaterialTheme.colorScheme.onSurfaceVariant,
+        }
+    }
+}
+
+/**
+ * 目前牌組內容的縮圖列，貼在卡片結果正上方——不用再跑去角落找一行小字，
+ * 加卡的同時餘光就能看到已經放了哪些。點整列拉出 ActiveDeckQuickView
+ * 看完整清單、調整張數。
+ */
+@Composable
+private fun ActiveDeckStrip(
+    deck: DeckWithEntries,
+    cardRepo: CardRepository,
+    onClick: () -> Unit,
+) {
+    val entryByPrinting = remember(deck.entries) { deck.entries.associate { it.printingId to it.count } }
+    val items = remember(deck.entries) { groupByCard(deck.entries, cardRepo) }
+    if (items.isEmpty()) return
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                deck.deck.name,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "${deck.totalCount}/50",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (deck.totalCount == 50) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Icon(
+                Icons.Filled.KeyboardArrowUp,
+                contentDescription = "拉出查看完整牌組內容",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp).padding(start = 4.dp),
+            )
+        }
+        LazyRow(
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items(items, key = { it.card.id }) { cc ->
+                // 牌組中實際放的刷版優先顯示縮圖，沒有才退回普卡（跟 DeckEntryRow 同樣邏輯）
+                val printing = cc.card.printings.firstOrNull { (entryByPrinting[it.id] ?: 0) > 0 }
+                    ?: cc.card.defaultPrinting
+                val isClimax = cc.card.cardType == CardType.CLIMAX
+                Box {
+                    AsyncImage(
+                        model = printing.imageURL,
+                        contentDescription = cc.card.nameZH,
+                        modifier = Modifier
+                            .width(if (isClimax) 62.dp else 44.dp)
+                            .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)
+                            .clip(RoundedCornerShape(4.dp)),
                     )
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(2.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                    ) {
+                        Text("${cc.count}", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
         }
