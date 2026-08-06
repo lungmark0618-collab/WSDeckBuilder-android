@@ -7,9 +7,14 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,11 +22,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.mark.wsdeck.data.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 圖鑑：作品選單 → 該作品的卡片。與 iOS 的 CardCatalogView 同樣的兩層結構。
@@ -30,11 +38,18 @@ import kotlinx.coroutines.delay
  * 想直接找卡的人不必先選作品。
  */
 @Composable
-fun CatalogScreen(repo: CardRepository) {
+fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
     var query by remember { mutableStateOf(SearchQuery()) }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
     var detail by remember { mutableStateOf<Card?>(null) }
     var showFilter by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val prefs = remember { Prefs(context) }
+
+    val decks by deckRepo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
+    var activeDeckUuid by remember { mutableStateOf(prefs.activeDeckUuid) }
+    val activeDeck = decks.firstOrNull { it.deck.uuid == activeDeckUuid }
 
     val showsGallery = query.keyword.isEmpty() && !query.hasActiveFilters
 
@@ -48,7 +63,15 @@ fun CatalogScreen(repo: CardRepository) {
         results = repo.search(query)
     }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+    Column(Modifier.fillMaxSize()) {
+        ActiveDeckPickerRow(
+            decks = decks,
+            activeDeck = activeDeck,
+            onSelect = { uuid ->
+                activeDeckUuid = uuid
+                prefs.activeDeckUuid = uuid
+            },
+        )
         SearchBarRow(
             keyword = query.keyword,
             pinnedTitle = query.titleCode?.let { code ->
@@ -68,7 +91,9 @@ fun CatalogScreen(repo: CardRepository) {
         } else if (results.isEmpty()) {
             Box(Modifier.fillMaxSize(), Alignment.Center) { Text("沒有符合的卡片") }
         } else {
-            CardGrid(results) { detail = it }
+            CardGrid(results, activeDeck, deckRepo) { card ->
+                detail = card
+            }
         }
     }
 
@@ -84,6 +109,71 @@ fun CatalogScreen(repo: CardRepository) {
             onQueryChange = { query = it },
             onDismiss = { showFilter = false },
         )
+    }
+}
+
+/**
+ * 選擇「目前編輯中的牌組」，卡片格子上的＋/－直接作用於它（對應 iOS 的
+ * ActiveDeckPicker）。沒有牌組時顯示提示，引導去牌組分頁建立。
+ */
+@Composable
+private fun ActiveDeckPickerRow(
+    decks: List<DeckWithEntries>,
+    activeDeck: DeckWithEntries?,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Style, contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        if (decks.isEmpty()) {
+            Text(
+                "到「牌組」分頁建立牌組後，可在此直接加卡",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Box {
+                Row(
+                    Modifier.clickable { expanded = true },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        activeDeck?.let { "編輯中：${it.deck.name}" } ?: "選擇要編輯的牌組",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Icon(Icons.Filled.ExpandMore, contentDescription = null,
+                        modifier = Modifier.size(18.dp))
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    DropdownMenuItem(text = { Text("（不選擇牌組）") }, onClick = {
+                        onSelect(""); expanded = false
+                    })
+                    decks.forEach { d ->
+                        DropdownMenuItem(text = { Text(d.deck.name) }, onClick = {
+                            onSelect(d.deck.uuid); expanded = false
+                        })
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            activeDeck?.let {
+                Text(
+                    "${it.totalCount}/50",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (it.totalCount == 50) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
@@ -240,7 +330,12 @@ private fun TitleTile(set: CardSetMeta, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CardGrid(cards: List<Card>, onTap: (Card) -> Unit) {
+private fun CardGrid(
+    cards: List<Card>,
+    activeDeck: DeckWithEntries?,
+    deckRepo: DeckRepository,
+    onTap: (Card) -> Unit,
+) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(100.dp),
         contentPadding = PaddingValues(12.dp),
@@ -248,21 +343,82 @@ private fun CardGrid(cards: List<Card>, onTap: (Card) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(cards, key = { it.id }) { card ->
-            Column(Modifier.clickable { onTap(card) }) {
-                AsyncImage(
-                    model = card.defaultPrinting.imageURL,
-                    contentDescription = card.nameZH,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(63f / 88f)
-                        .clip(RoundedCornerShape(4.dp)),
-                )
-                Text(
-                    card.nameZH,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            CardTile(card, activeDeck, deckRepo, onTap)
+        }
+    }
+}
+
+@Composable
+private fun CardTile(
+    card: Card,
+    activeDeck: DeckWithEntries?,
+    deckRepo: DeckRepository,
+    onTap: (Card) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+
+    // 牌組裡跨刷版的總張數——加了 SR 版之後，普卡格子上的徽章也該反映總數，
+    // 不然使用者以為卡片還沒放進牌組
+    val countInDeck = remember(activeDeck, card) {
+        activeDeck?.entries
+            ?.filter { entry -> card.printings.any { it.id == entry.printingId } }
+            ?.sumOf { it.count } ?: 0
+    }
+
+    Column(Modifier.clickable { onTap(card) }) {
+        Box {
+            AsyncImage(
+                model = card.defaultPrinting.imageURL,
+                contentDescription = card.nameZH,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(63f / 88f)
+                    .clip(RoundedCornerShape(4.dp)),
+            )
+            if (countInDeck > 0) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text("×$countInDeck", color = Color.White,
+                        style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+        Text(
+            card.nameZH,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        // 有選定牌組時才顯示＋/－，免得沒牌組可加時空占版面
+        if (activeDeck != null) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            deckRepo.adjust(activeDeck.deck.uuid, card.defaultPrinting.id, -1)
+                        }
+                    },
+                    enabled = countInDeck > 0,
+                    modifier = Modifier.size(28.dp),
+                ) { Icon(Icons.Filled.Remove, contentDescription = "減少", modifier = Modifier.size(16.dp)) }
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            deckRepo.adjust(activeDeck.deck.uuid, card.defaultPrinting.id, 1)
+                        }
+                    },
+                    modifier = Modifier.size(28.dp),
+                ) { Icon(Icons.Filled.Add, contentDescription = "增加", modifier = Modifier.size(16.dp)) }
             }
         }
     }
