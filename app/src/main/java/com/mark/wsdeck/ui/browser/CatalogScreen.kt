@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +34,7 @@ fun CatalogScreen(repo: CardRepository) {
     var query by remember { mutableStateOf(SearchQuery()) }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
     var detail by remember { mutableStateOf<Card?>(null) }
+    var showFilter by remember { mutableStateOf(false) }
 
     val showsGallery = query.keyword.isEmpty() && !query.hasActiveFilters
 
@@ -51,9 +54,12 @@ fun CatalogScreen(repo: CardRepository) {
             pinnedTitle = query.titleCode?.let { code ->
                 repo.snapshot.sets.firstOrNull { it.titleCode == code }?.titleNameZH
             },
+            hasActiveFilters = query.hasActiveFilters,
             onKeyword = { query = query.copy(keyword = it) },
             onClearTitle = { query = SearchQuery() },
+            onOpenFilter = { showFilter = true },
         )
+        ActiveFilterBar(query, repo.snapshot.sets) { query = SearchQuery(titleCode = query.titleCode) }
 
         if (showsGallery) {
             TitleGallery(repo.snapshot.sets, repo.snapshot.cards.size) {
@@ -69,27 +75,56 @@ fun CatalogScreen(repo: CardRepository) {
     detail?.let { card ->
         CardDetailSheet(card, repo.titleCode(card)) { detail = null }
     }
+
+    if (showFilter) {
+        FilterSheet(
+            query = query,
+            sets = repo.snapshot.sets,
+            allTraits = repo.snapshot.allTraits,
+            onQueryChange = { query = it },
+            onDismiss = { showFilter = false },
+        )
+    }
 }
 
 @Composable
 private fun SearchBarRow(
     keyword: String,
     pinnedTitle: String?,
+    hasActiveFilters: Boolean,
     onKeyword: (String) -> Unit,
     onClearTitle: () -> Unit,
+    onOpenFilter: () -> Unit,
 ) {
     Column {
-        OutlinedTextField(
-            value = keyword,
-            onValueChange = onKeyword,
-            // 鎖定作品時搜尋範圍只在該作品內，提示字要講清楚，
-            // 不然使用者會以為是跨作品搜尋卻找不到東西
-            placeholder = {
-                Text(if (pinnedTitle != null) "在這部作品裡搜尋" else "卡號、卡名、能力文字")
-            },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        )
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = keyword,
+                onValueChange = onKeyword,
+                // 鎖定作品時搜尋範圍只在該作品內，提示字要講清楚，
+                // 不然使用者會以為是跨作品搜尋卻找不到東西
+                placeholder = {
+                    Text(if (pinnedTitle != null) "在這部作品裡搜尋" else "卡號、卡名、能力文字")
+                },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            FilledIconButton(
+                onClick = onOpenFilter,
+                colors = if (hasActiveFilters) {
+                    IconButtonDefaults.filledIconButtonColors()
+                } else {
+                    IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+            ) { Icon(Icons.Filled.FilterList, contentDescription = "篩選") }
+        }
         if (pinnedTitle != null) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -100,6 +135,38 @@ private fun SearchBarRow(
                 TextButton(onClick = onClearTitle) { Text("回作品選單") }
             }
         }
+    }
+}
+
+/**
+ * 讓人知道結果為何被縮小，並能一鍵解除。標題不重複顯示——
+ * 已經有 pinnedTitle 那一列了，這裡只列標題以外的條件。
+ */
+@Composable
+private fun ActiveFilterBar(query: SearchQuery, sets: List<CardSetMeta>, onClear: () -> Unit) {
+    val parts = buildList {
+        if (query.levels.isNotEmpty()) {
+            add("Lv" + query.levels.sorted().joinToString("/"))
+        }
+        if (query.colors.isNotEmpty()) add(query.colors.joinToString("/") { it.label })
+        if (query.types.isNotEmpty()) add(query.types.joinToString("/") { it.label })
+        if (query.triggers.isNotEmpty()) add("判定×${query.triggers.size}")
+        if (query.traits.isNotEmpty()) add(query.traits.sorted().joinToString("/"))
+    }
+    if (parts.isEmpty()) return
+
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            parts.joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        TextButton(onClick = onClear) { Text("清除") }
     }
 }
 
