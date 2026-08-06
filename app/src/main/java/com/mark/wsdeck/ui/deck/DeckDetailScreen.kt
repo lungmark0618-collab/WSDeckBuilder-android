@@ -1,5 +1,7 @@
 package com.mark.wsdeck.ui.deck
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,21 +14,27 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.SingletonImageLoader
 import com.mark.wsdeck.data.*
 import kotlinx.coroutines.launch
 
 /**
- * 單一牌組編輯，依等級分組；卡表／統計切換（對應 iOS 的 DeckDetailView，簡化版：
- * 不含收藏比對缺卡、封面選擇、匯出——那些留到後面的階段）。
+ * 單一牌組編輯，依等級分組；卡表／統計切換，含出圖分享（對應 iOS 的
+ * DeckDetailView，簡化版：不含收藏比對缺卡、封面選擇——那些留到後面）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,11 +47,46 @@ fun DeckDetailScreen(
     val deckState by deckRepo.observeDeck(uuid).collectAsStateWithLifecycle(initialValue = null)
     val deck = deckState ?: return
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var mode by remember { mutableStateOf(Mode.CARDS) }
     var showRename by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var isExporting by remember { mutableStateOf(false) }
+    val prefs = remember { Prefs(context) }
+    // 圖片／清單各自記憶，跨牌組共用一個設定（與 iOS 的 deckUsesGrid 一致）
+    var usesGrid by remember { mutableStateOf(prefs.deckUsesGrid) }
 
     val items = remember(deck.entries) { groupByCard(deck.entries, cardRepo) }
     val validation = remember(items) { DeckValidator.validate(items) }
+
+    fun exportImage() {
+        showMenu = false
+        if (items.isEmpty() || isExporting) return
+        isExporting = true
+        scope.launch {
+            val file = DeckImageExporter.render(
+                context = context,
+                deckName = deck.deck.name,
+                entries = deck.entries,
+                items = items,
+                imageLoader = SingletonImageLoader.get(context),
+            )
+            isExporting = false
+            if (file == null) {
+                Toast.makeText(context, "出圖失敗", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            // FileProvider 換成 content:// URI——直接給 file:// 在新版 Android
+            // 會被 FileUriExposedException 擋下來
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "分享牌組圖片"))
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -55,7 +98,37 @@ fun DeckDetailScreen(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { showRename = true }) { Text("重新命名") }
+                    // 卡表模式才需要切換圖片／清單
+                    if (mode == Mode.CARDS) {
+                        IconButton(onClick = {
+                            usesGrid = !usesGrid
+                            prefs.deckUsesGrid = usesGrid
+                        }) {
+                            Icon(
+                                if (usesGrid) Icons.Filled.ViewList else Icons.Filled.GridView,
+                                contentDescription = if (usesGrid) "改為清單顯示" else "改為圖片顯示",
+                            )
+                        }
+                    }
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            if (isExporting) {
+                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "更多")
+                            }
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(text = { Text("重新命名") }, onClick = {
+                                showMenu = false; showRename = true
+                            })
+                            DropdownMenuItem(
+                                text = { Text("匯出牌組圖片（可掃回）") },
+                                onClick = ::exportImage,
+                                enabled = items.isNotEmpty(),
+                            )
+                        }
+                    }
                 },
             )
         },
@@ -72,7 +145,7 @@ fun DeckDetailScreen(
                 }
             }
             when (mode) {
-                Mode.CARDS -> CardsTab(deck, items) { printingId, delta ->
+                Mode.CARDS -> DeckCardsTab(deck, items, usesGrid) { printingId, delta ->
                     scope.launch { deckRepo.adjust(uuid, printingId, delta) }
                 }
                 Mode.STATS -> DeckStatsView(items)
@@ -125,132 +198,6 @@ private fun RuleChip(text: String, ok: Boolean) {
     ) {
         Text(text, color = color, style = MaterialTheme.typography.labelMedium)
     }
-}
-
-@Composable
-private fun CardsTab(
-    deck: DeckWithEntries,
-    items: List<CardCount>,
-    onAdjust: (printingId: String, delta: Int) -> Unit,
-) {
-    val sections = remember(items) { buildSections(items) }
-    if (items.isEmpty()) {
-        Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
-            Text("牌組是空的，到「圖鑑」分頁選擇此牌組後加卡",
-                style = MaterialTheme.typography.bodyMedium)
-        }
-        return
-    }
-    LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
-        sections.forEach { section ->
-            item(key = "header-${section.title}") {
-                Text(
-                    "${section.title} (${section.count})",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                )
-            }
-            items(section.items, key = { it.card.id }) { item ->
-                DeckEntryRow(
-                    deck = deck,
-                    item = item,
-                    totalForName = DeckValidator.nameCount(item.card, items),
-                    onAdjust = onAdjust,
-                )
-            }
-        }
-    }
-}
-
-private data class LevelSection(val title: String, val count: Int, val items: List<CardCount>)
-
-private fun buildSections(items: List<CardCount>): List<LevelSection> {
-    val result = mutableListOf<LevelSection>()
-    for (level in 0..3) {
-        val group = items.filter { it.card.level == level && it.card.cardType != CardType.CLIMAX }
-        if (group.isNotEmpty()) {
-            result += LevelSection("Lv$level", group.sumOf { it.count }, group)
-        }
-    }
-    val climax = items.filter { it.card.cardType == CardType.CLIMAX }
-    if (climax.isNotEmpty()) result += LevelSection("CX", climax.sumOf { it.count }, climax)
-    return result
-}
-
-@Composable
-private fun DeckEntryRow(
-    deck: DeckWithEntries,
-    item: CardCount,
-    totalForName: Int,
-    onAdjust: (printingId: String, delta: Int) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val overLimit = totalForName > DeckValidator.NAME_LIMIT
-    val entryByPrinting = remember(deck.entries) {
-        deck.entries.associate { it.printingId to it.count }
-    }
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable { expanded = !expanded }
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    item.card.nameZH,
-                    color = if (overLimit) MaterialTheme.colorScheme.error
-                           else MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                val rarities = item.card.printings
-                    .mapNotNull { p -> (entryByPrinting[p.id] ?: 0).takeIf { it > 0 }?.let { "${p.rarity}×$it" } }
-                    .joinToString(" ")
-                Text(
-                    rarities.ifEmpty { item.card.id },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                "×${item.count}",
-                style = MaterialTheme.typography.titleMedium,
-                color = if (overLimit) MaterialTheme.colorScheme.error
-                       else MaterialTheme.colorScheme.onSurface,
-            )
-            Icon(
-                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                contentDescription = null,
-                modifier = Modifier.padding(start = 4.dp),
-            )
-        }
-        if (expanded) {
-            Column(Modifier.padding(top = 6.dp)) {
-                item.card.printings.forEach { printing ->
-                    val count = entryByPrinting[printing.id] ?: 0
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(printing.rarity, style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.width(48.dp))
-                        Text(
-                            printing.id,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        CountStepper(count) { delta -> onAdjust(printing.id, delta) }
-                    }
-                }
-            }
-        }
-    }
-    HorizontalDivider()
 }
 
 @Composable

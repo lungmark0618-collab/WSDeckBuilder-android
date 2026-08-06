@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 出圖存在快取的 shared_images/，分享完可隨時清掉 -->
+    <cache-path name="shared_images" path="shared_images/" />
+</paths>

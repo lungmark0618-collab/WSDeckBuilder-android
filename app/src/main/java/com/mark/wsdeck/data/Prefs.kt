@@ -13,7 +13,13 @@ class Prefs(context: Context) {
         get() = prefs.getString(KEY_ACTIVE_DECK, "") ?: ""
         set(value) = prefs.edit().putString(KEY_ACTIVE_DECK, value).apply()
 
+    /** 牌組卡表用圖片格子還是文字清單，對應 iOS 的 @AppStorage("deckUsesGrid") */
+    var deckUsesGrid: Boolean
+        get() = prefs.getBoolean(KEY_DECK_USES_GRID, true)
+        set(value) = prefs.edit().putBoolean(KEY_DECK_USES_GRID, value).apply()
+
     companion object {
         private const val KEY_ACTIVE_DECK = "active_deck_uuid"
+        private const val KEY_DECK_USES_GRID = "deck_uses_grid"
     }
 }

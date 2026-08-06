@@ -13,8 +13,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.mark.wsdeck.data.*
+import com.mark.wsdeck.ui.deck.DeckCardsTab
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -43,6 +47,7 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
     var detail by remember { mutableStateOf<Card?>(null) }
     var showFilter by remember { mutableStateOf(false) }
+    var showDeckQuickView by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
@@ -71,6 +76,7 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
                 activeDeckUuid = uuid
                 prefs.activeDeckUuid = uuid
             },
+            onShowContents = { showDeckQuickView = true },
         )
         SearchBarRow(
             keyword = query.keyword,
@@ -101,6 +107,13 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
         CardDetailSheet(card, repo.titleCode(card)) { detail = null }
     }
 
+    // 加卡加到一半想確認「現在到底放了哪些」，不必離開圖鑑切去牌組分頁。
+    // ⚠ 這不是 iOS 有的功能——iOS 圖鑑只靠格子上的張數徽章跟這裡的 N/50，
+    // 沒有現成的清單可看，這是額外補的。
+    if (showDeckQuickView && activeDeck != null) {
+        ActiveDeckQuickView(activeDeck, repo, deckRepo) { showDeckQuickView = false }
+    }
+
     if (showFilter) {
         FilterSheet(
             query = query,
@@ -121,6 +134,7 @@ private fun ActiveDeckPickerRow(
     decks: List<DeckWithEntries>,
     activeDeck: DeckWithEntries?,
     onSelect: (String) -> Unit,
+    onShowContents: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Row(
@@ -166,14 +180,69 @@ private fun ActiveDeckPickerRow(
             }
             Spacer(Modifier.weight(1f))
             activeDeck?.let {
-                Text(
-                    "${it.totalCount}/50",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (it.totalCount == 50) MaterialTheme.colorScheme.primary
-                           else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // 點張數可以直接看目前放了哪些卡，不必離開圖鑑
+                Row(
+                    Modifier.clickable(onClick = onShowContents),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Visibility, contentDescription = "查看目前牌組內容",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "${it.totalCount}/50",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (it.totalCount == 50) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * 加卡加到一半的快速檢視：不離開圖鑑就能看到目前牌組放了哪些卡、直接調整。
+ * 沿用牌組詳情頁同一套卡表元件，圖片／清單切換也共用同一個設定。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActiveDeckQuickView(
+    deck: DeckWithEntries,
+    cardRepo: CardRepository,
+    deckRepo: DeckRepository,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val prefs = remember { Prefs(context) }
+    var usesGrid by remember { mutableStateOf(prefs.deckUsesGrid) }
+    val scope = rememberCoroutineScope()
+    val items = remember(deck.entries) { groupByCard(deck.entries, cardRepo) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(deck.deck.name, style = MaterialTheme.typography.titleMedium)
+                Text("${deck.totalCount}/50", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = {
+                usesGrid = !usesGrid
+                prefs.deckUsesGrid = usesGrid
+            }) {
+                Icon(if (usesGrid) Icons.Filled.ViewList else Icons.Filled.GridView,
+                    contentDescription = if (usesGrid) "改為清單顯示" else "改為圖片顯示")
+            }
+        }
+        Box(Modifier.heightIn(max = 480.dp)) {
+            DeckCardsTab(deck, items, usesGrid, editable = true) { printingId, delta ->
+                scope.launch { deckRepo.adjust(deck.deck.uuid, printingId, delta) }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
     }
 }
 
