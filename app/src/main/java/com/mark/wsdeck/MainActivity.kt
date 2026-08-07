@@ -103,7 +103,7 @@ private fun MainScaffold(cardRepo: CardRepository, deckRepo: DeckRepository) {
         ) {
             composable(Tab.Catalog.route) { CatalogScreen(cardRepo, deckRepo) }
             composable(Tab.Decks.route) {
-                DeckListScreen(deckRepo) { uuid -> navController.navigate("deck/$uuid") }
+                DeckListScreen(cardRepo, deckRepo) { uuid -> navController.navigate("deck/$uuid") }
             }
             composable("deck/{uuid}") { backStackEntry ->
                 val uuid = backStackEntry.arguments?.getString("uuid") ?: return@composable

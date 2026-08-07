@@ -38,8 +38,7 @@ python3 ../WSDeckBuilder/tools/fetch_published_cards.py --out app/src/main/asset
 - [x] 卡圖快取（記憶體 + 磁碟，放 `filesDir` 不放 `cacheDir`，避免被系統清除）
 - [x] 篩選（等級／顏色／種類／判定標誌／特徵）
 - [x] 牌組管理（Room）、規則驗證、統計
-- [x] 牌組出圖 + QR
-- [ ] 掃圖匯入（Exporter/Importer 都寫好了，還沒接進「牌組」分頁的 UI）
+- [x] 牌組出圖 + QR、掃圖匯入（實測跟 iOS 出的圖互通）
 - [ ] 卡表線上更新
 
 ## 踩過的坑
