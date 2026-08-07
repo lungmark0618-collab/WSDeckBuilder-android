@@ -36,9 +36,10 @@ python3 ../WSDeckBuilder/tools/fetch_published_cards.py --out app/src/main/asset
 
 - [x] 卡表載入、作品選單、卡片網格、搜尋、卡片詳情
 - [x] 卡圖快取（記憶體 + 磁碟，放 `filesDir` 不放 `cacheDir`，避免被系統清除）
-- [ ] 篩選（等級／顏色／種類／判定標誌／特徵）
-- [ ] 牌組管理（Room）、規則驗證、統計
-- [ ] 牌組出圖 + QR、掃圖匯入
+- [x] 篩選（等級／顏色／種類／判定標誌／特徵）
+- [x] 牌組管理（Room）、規則驗證、統計
+- [x] 牌組出圖 + QR
+- [ ] 掃圖匯入（Exporter/Importer 都寫好了，還沒接進「牌組」分頁的 UI）
 - [ ] 卡表線上更新
 
 ## 踩過的坑
@@ -52,6 +53,14 @@ iOS 的 `ImageCache` 與 `fetch_cards.py` 都有設，Android 這邊靠 OkHttp �
 **AGP 8.13 不支援 compileSdk 37**——SDK 37 只有 `android-37.0` 這種帶小版號的
 platform，AGP 8.x 找的是 `android-37`。用 36。而 AGP 9.x 內建 Kotlin 支援，
 會跟 `org.jetbrains.kotlin.android` 撞名。
+
+## 授權
+
+程式碼與文件採 [PolyForm Noncommercial License 1.0.0](LICENSE.md)：可自由使用與修改，
+**但不得用於商業用途**。
+
+授權範圍**僅限本 repo 內我自己撰寫的內容**（Kotlin 程式碼、文件）。
+卡片資料不在此 repo 內，也不在授權範圍內——那是權利方的著作，我無權授權。
 
 ## 著作權
 
