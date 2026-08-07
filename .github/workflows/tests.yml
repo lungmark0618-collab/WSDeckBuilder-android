@@ -1,0 +1,30 @@
+name: 測試
+
+# 為什麼需要這個：跟 iOS 版同一個教訓——編譯壞掉或邏輯錯了，
+# 不該等到下次手動建置才發現。這裡測的是不需要卡片資料、不需要裝置的
+# 純邏輯（規則驗證、QR 載荷格式、匯入命名規則），跑起來快也不需要模擬器。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/tests.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 測試
+        run: ./gradlew testDebugUnitTest --console=plain

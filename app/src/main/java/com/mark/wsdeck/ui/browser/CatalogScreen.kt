@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Style
-import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -299,7 +299,7 @@ private fun ActiveDeckQuickView(
                 usesGrid = !usesGrid
                 prefs.deckUsesGrid = usesGrid
             }) {
-                Icon(if (usesGrid) Icons.Filled.ViewList else Icons.Filled.GridView,
+                Icon(if (usesGrid) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
                     contentDescription = if (usesGrid) "改為清單顯示" else "改為圖片顯示")
             }
         }

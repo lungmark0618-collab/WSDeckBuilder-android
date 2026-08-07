@@ -11,13 +11,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -94,7 +94,7 @@ fun DeckDetailScreen(
                 title = { Text(deck.deck.name) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
@@ -105,7 +105,7 @@ fun DeckDetailScreen(
                             prefs.deckUsesGrid = usesGrid
                         }) {
                             Icon(
-                                if (usesGrid) Icons.Filled.ViewList else Icons.Filled.GridView,
+                                if (usesGrid) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
                                 contentDescription = if (usesGrid) "改為清單顯示" else "改為圖片顯示",
                             )
                         }
