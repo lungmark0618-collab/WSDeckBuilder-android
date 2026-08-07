@@ -18,8 +18,14 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_DECK_USES_GRID, true)
         set(value) = prefs.edit().putBoolean(KEY_DECK_USES_GRID, value).apply()
 
+    /** 上次靜默檢查卡表更新的時間（epoch ms），對應 iOS 的 lastCheckedAt */
+    var cardDataLastCheckedAt: Long
+        get() = prefs.getLong(KEY_CARD_DATA_CHECKED_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_CARD_DATA_CHECKED_AT, value).apply()
+
     companion object {
         private const val KEY_ACTIVE_DECK = "active_deck_uuid"
         private const val KEY_DECK_USES_GRID = "deck_uses_grid"
+        private const val KEY_CARD_DATA_CHECKED_AT = "card_data_last_checked_at"
     }
 }

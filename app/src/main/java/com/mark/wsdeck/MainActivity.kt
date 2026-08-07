@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,10 +18,12 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
 import com.mark.wsdeck.data.CardRepository
 import com.mark.wsdeck.data.CollectionRepository
+import com.mark.wsdeck.data.DataUpdater
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.ui.browser.CatalogScreen
 import com.mark.wsdeck.ui.deck.DeckDetailScreen
 import com.mark.wsdeck.ui.deck.DeckListScreen
+import com.mark.wsdeck.ui.settings.SettingsScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,10 +31,11 @@ class MainActivity : ComponentActivity() {
         val cardRepo = CardRepository(applicationContext)
         val deckRepo = DeckRepository(applicationContext)
         val collectionRepo = CollectionRepository(applicationContext)
+        val updater = DataUpdater(applicationContext)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
-                    AppRoot(cardRepo, deckRepo, collectionRepo)
+                    AppRoot(cardRepo, deckRepo, collectionRepo, updater)
                 }
             }
         }
@@ -41,14 +45,24 @@ class MainActivity : ComponentActivity() {
 private sealed class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Catalog : Tab("catalog", "圖鑑", Icons.Filled.Search)
     object Decks : Tab("decks", "牌組", Icons.Filled.Style)
+    object Settings : Tab("settings", "設定", Icons.Filled.Settings)
 }
-private val tabs = listOf(Tab.Catalog, Tab.Decks)
+private val tabs = listOf(Tab.Catalog, Tab.Decks, Tab.Settings)
 
 @Composable
-private fun AppRoot(cardRepo: CardRepository, deckRepo: DeckRepository, collectionRepo: CollectionRepository) {
+private fun AppRoot(
+    cardRepo: CardRepository,
+    deckRepo: DeckRepository,
+    collectionRepo: CollectionRepository,
+    updater: DataUpdater,
+) {
     // null = 還在載入。5.7 MB 的 JSON 要解一下，先蓋住空畫面
     var loaded by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(Unit) { loaded = cardRepo.load() }
+    LaunchedEffect(Unit) {
+        loaded = cardRepo.load()
+        // 查更新絕不擋開場：卡表載完、畫面已經能用了才在背景問一次（跟 iOS 同樣的順序）
+        updater.checkSilently(cardRepo)
+    }
 
     when (loaded) {
         null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -61,12 +75,17 @@ private fun AppRoot(cardRepo: CardRepository, deckRepo: DeckRepository, collecti
         false -> Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
             Text(cardRepo.loadError ?: "資料載入失敗")
         }
-        true -> MainScaffold(cardRepo, deckRepo, collectionRepo)
+        true -> MainScaffold(cardRepo, deckRepo, collectionRepo, updater)
     }
 }
 
 @Composable
-private fun MainScaffold(cardRepo: CardRepository, deckRepo: DeckRepository, collectionRepo: CollectionRepository) {
+private fun MainScaffold(
+    cardRepo: CardRepository,
+    deckRepo: DeckRepository,
+    collectionRepo: CollectionRepository,
+    updater: DataUpdater,
+) {
     val navController = rememberNavController()
 
     Scaffold(
@@ -111,6 +130,7 @@ private fun MainScaffold(cardRepo: CardRepository, deckRepo: DeckRepository, col
                 val uuid = backStackEntry.arguments?.getString("uuid") ?: return@composable
                 DeckDetailScreen(uuid, cardRepo, deckRepo, collectionRepo) { navController.popBackStack() }
             }
+            composable(Tab.Settings.route) { SettingsScreen(cardRepo, updater) }
         }
     }
 }

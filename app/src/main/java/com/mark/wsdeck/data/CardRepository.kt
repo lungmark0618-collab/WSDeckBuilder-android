@@ -26,13 +26,22 @@ class CardRepository(private val context: Context) {
     var loadError: String? = null
         private set
 
+    /** 重新載入，更新卡表下載完之後呼叫（跟 load() 是同一套邏輯，只是取個對應 iOS reload() 的名字） */
+    suspend fun reload(): Boolean = load()
+
     suspend fun load(): Boolean = withContext(Dispatchers.Default) {
-        val names = try {
-            context.assets.list("")!!.filter { it.endsWith("_cards.json") }.sorted()
+        val assetNames = try {
+            context.assets.list("")!!.filter { it.endsWith("_cards.json") }
         } catch (e: Exception) {
             loadError = "讀不到卡片資料檔：${e.message}"
             return@withContext false
         }
+        // 下載更新的卡表放在 CardDataStore，檔名對得上就蓋過內建 assets 版本；
+        // 還沒下載過的作品照舊用內建版本，兩邊合併而不是誰有就整組取代誰
+        val downloadedDir = CardDataStore.directory(context)
+        val downloadedNames = downloadedDir.listFiles { f -> f.name.endsWith("_cards.json") }
+            ?.map { it.name } ?: emptyList()
+        val names = (assetNames + downloadedNames).toSet().sorted()
         if (names.isEmpty()) {
             loadError = "找不到卡片資料檔（*_cards.json）"
             return@withContext false
@@ -43,7 +52,12 @@ class CardRepository(private val context: Context) {
         val titleByCardId = mutableMapOf<String, String>()
         for (name in names) {
             try {
-                val text = context.assets.open(name).bufferedReader().use { it.readText() }
+                val downloaded = java.io.File(downloadedDir, name)
+                val text = if (downloaded.exists()) {
+                    downloaded.readText()
+                } else {
+                    context.assets.open(name).bufferedReader().use { it.readText() }
+                }
                 val set = cardJson.decodeFromString<CardSet>(text)
                 sets += set.meta
                 for (c in set.cards) titleByCardId[c.id] = set.meta.titleCode
