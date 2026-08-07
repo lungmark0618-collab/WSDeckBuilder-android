@@ -31,6 +31,14 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Robolectric 讀卡表資產（assets）要靠這個才拿得到 app 模組的實際檔案，
+    // 不然 unit test 裡的 AssetManager 是空的
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 kotlin {
@@ -65,4 +73,6 @@ dependencies {
     implementation(libs.okhttp)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.junit)
 }

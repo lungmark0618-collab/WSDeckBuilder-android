@@ -32,6 +32,16 @@ python3 ../WSDeckBuilder/tools/fetch_published_cards.py --out app/src/main/asset
 
 需要 Android SDK 36、JDK 17+（Android Studio 內建的 JBR 可用）。
 
+### 測試
+
+```bash
+./gradlew testDebugUnitTest
+```
+
+大部分測試是純邏輯，不需要卡表。但 `CardRepositoryTest`（對應 iOS 的
+`CardSearchTests`）用 Robolectric 讀真正的卡表資料，跑之前要先取得卡片資料
+（見上一節）；沒有卡表這幾個測試會直接失敗，不是被跳過。
+
 ## 進度
 
 - [x] 卡表載入、作品選單、卡片網格、搜尋、卡片詳情
