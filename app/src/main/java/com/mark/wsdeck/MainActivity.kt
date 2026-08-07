@@ -16,6 +16,7 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
 import com.mark.wsdeck.data.CardRepository
+import com.mark.wsdeck.data.CollectionRepository
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.ui.browser.CatalogScreen
 import com.mark.wsdeck.ui.deck.DeckDetailScreen
@@ -26,10 +27,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val cardRepo = CardRepository(applicationContext)
         val deckRepo = DeckRepository(applicationContext)
+        val collectionRepo = CollectionRepository(applicationContext)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
-                    AppRoot(cardRepo, deckRepo)
+                    AppRoot(cardRepo, deckRepo, collectionRepo)
                 }
             }
         }
@@ -43,7 +45,7 @@ private sealed class Tab(val route: String, val label: String, val icon: android
 private val tabs = listOf(Tab.Catalog, Tab.Decks)
 
 @Composable
-private fun AppRoot(cardRepo: CardRepository, deckRepo: DeckRepository) {
+private fun AppRoot(cardRepo: CardRepository, deckRepo: DeckRepository, collectionRepo: CollectionRepository) {
     // null = 還在載入。5.7 MB 的 JSON 要解一下，先蓋住空畫面
     var loaded by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) { loaded = cardRepo.load() }
@@ -59,12 +61,12 @@ private fun AppRoot(cardRepo: CardRepository, deckRepo: DeckRepository) {
         false -> Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
             Text(cardRepo.loadError ?: "資料載入失敗")
         }
-        true -> MainScaffold(cardRepo, deckRepo)
+        true -> MainScaffold(cardRepo, deckRepo, collectionRepo)
     }
 }
 
 @Composable
-private fun MainScaffold(cardRepo: CardRepository, deckRepo: DeckRepository) {
+private fun MainScaffold(cardRepo: CardRepository, deckRepo: DeckRepository, collectionRepo: CollectionRepository) {
     val navController = rememberNavController()
 
     Scaffold(
@@ -101,13 +103,13 @@ private fun MainScaffold(cardRepo: CardRepository, deckRepo: DeckRepository) {
             startDestination = Tab.Catalog.route,
             modifier = Modifier.padding(padding),
         ) {
-            composable(Tab.Catalog.route) { CatalogScreen(cardRepo, deckRepo) }
+            composable(Tab.Catalog.route) { CatalogScreen(cardRepo, deckRepo, collectionRepo) }
             composable(Tab.Decks.route) {
                 DeckListScreen(cardRepo, deckRepo) { uuid -> navController.navigate("deck/$uuid") }
             }
             composable("deck/{uuid}") { backStackEntry ->
                 val uuid = backStackEntry.arguments?.getString("uuid") ?: return@composable
-                DeckDetailScreen(uuid, cardRepo, deckRepo) { navController.popBackStack() }
+                DeckDetailScreen(uuid, cardRepo, deckRepo, collectionRepo) { navController.popBackStack() }
             }
         }
     }

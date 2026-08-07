@@ -17,8 +17,8 @@ import com.mark.wsdeck.data.*
 /**
  * 篩選面板。對應 iOS 的 FilterSheet（§4.4.1：條件間 AND、同條件內 OR）。
  *
- * 「收藏狀態」「收錄來源」兩個區塊沒有搬過來——那兩個依賴 iOS 端的
- * CollectionEntry／CardSource，屬於牌組管理那塊，還沒做。
+ * 「收錄來源」沒有搬過來——那個依賴 iOS 端的 CardSource，卡表資料裡目前
+ * 沒有對應欄位。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -46,9 +46,20 @@ fun FilterSheet(
                     onClick = { onQueryChange(query.copy(
                         levels = emptySet(), colors = emptySet(), types = emptySet(),
                         triggers = emptySet(), traits = emptySet(), titleCode = null,
+                        ownership = OwnershipFilter.ALL,
                     )) },
                     enabled = query.hasActiveFilters,
                 ) { Text("全部清除") }
+            }
+
+            FilterSection("收藏狀態") {
+                ChipRow {
+                    OwnershipFilter.entries.forEach { filter ->
+                        Chip(filter.label, query.ownership == filter) {
+                            onQueryChange(query.copy(ownership = filter))
+                        }
+                    }
+                }
             }
 
             FilterSection("作品") {

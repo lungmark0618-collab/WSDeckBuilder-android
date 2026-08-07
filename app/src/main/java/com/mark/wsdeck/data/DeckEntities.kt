@@ -83,7 +83,11 @@ interface DeckDao {
     suspend fun touch(uuid: String, timestamp: Long)
 }
 
-@Database(entities = [DeckEntity::class, DeckEntryEntity::class], version = 1)
+@Database(
+    entities = [DeckEntity::class, DeckEntryEntity::class, CollectionEntryEntity::class],
+    version = 2,
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun deckDao(): DeckDao
+    abstract fun collectionDao(): CollectionDao
 }

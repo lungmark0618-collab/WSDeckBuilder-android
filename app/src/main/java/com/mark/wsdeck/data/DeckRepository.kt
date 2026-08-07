@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
 class DeckRepository(context: Context) {
     private val db = Room.databaseBuilder(
         context.applicationContext, AppDatabase::class.java, "wsdeck.db",
-    ).build()
+    ).fallbackToDestructiveMigration(true).build()
     private val dao = db.deckDao()
 
     fun observeDecks(): Flow<List<DeckWithEntries>> = dao.observeDecks()
@@ -74,4 +74,24 @@ fun groupByCard(entries: List<DeckEntryEntity>, repo: CardRepository): List<Card
         cardOf[card.id] = card
     }
     return byCard.mapNotNull { (id, count) -> cardOf[id]?.let { CardCount(it, count) } }
+}
+
+/**
+ * 封面刷版：使用者指定優先，否則取等級最高（其次張數多）的一張，
+ * 對應 iOS 的 Deck.coverPrinting(database:)。
+ */
+fun DeckWithEntries.coverPrinting(repo: CardRepository): Printing? {
+    if (deck.coverPrintingId.isNotEmpty()) {
+        repo.snapshot.cardById[deck.coverPrintingId]
+            ?.printings?.firstOrNull { it.id == deck.coverPrintingId }
+            ?.let { return it }
+    }
+    return entries
+        .mapNotNull { entry ->
+            val card = repo.snapshot.cardById[entry.printingId] ?: return@mapNotNull null
+            val printing = card.printings.firstOrNull { it.id == entry.printingId } ?: return@mapNotNull null
+            Triple(printing, card.level ?: -1, entry.count)
+        }
+        .maxWithOrNull(compareBy({ it.second }, { it.third }))
+        ?.first
 }

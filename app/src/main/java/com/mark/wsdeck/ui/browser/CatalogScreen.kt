@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Style
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.mark.wsdeck.data.*
+import com.mark.wsdeck.ui.deck.CountStepper
 import com.mark.wsdeck.ui.deck.DeckCardsTab
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -45,7 +47,7 @@ import kotlinx.coroutines.launch
  * 想直接找卡的人不必先選作品。
  */
 @Composable
-fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
+fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository, collectionRepo: CollectionRepository) {
     var query by remember { mutableStateOf(SearchQuery()) }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
     var detail by remember { mutableStateOf<Card?>(null) }
@@ -59,16 +61,25 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
     var activeDeckUuid by remember { mutableStateOf(prefs.activeDeckUuid) }
     val activeDeck = decks.firstOrNull { it.deck.uuid == activeDeckUuid }
 
+    val collection by collectionRepo.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
+    val collectionIndex = remember(collection) { CollectionStore.index(collection) }
+
     val showsGallery = query.keyword.isEmpty() && !query.hasActiveFilters
 
-    // 打字時每個字都重搜會頓；停一下再搜，中途的輸入直接作廢
-    LaunchedEffect(query) {
+    // 打字時每個字都重搜會頓；停一下再搜，中途的輸入直接作廢。收藏狀態不是
+    // CardRepository.search() 認得的條件，跟 iOS 一樣在搜完之後另外過濾一次。
+    LaunchedEffect(query, collectionIndex) {
         if (showsGallery) {
             results = emptyList()
             return@LaunchedEffect
         }
         if (query.keyword.isNotEmpty()) delay(180)
-        results = repo.search(query)
+        val found = repo.search(query)
+        results = when (query.ownership) {
+            OwnershipFilter.ALL -> found
+            OwnershipFilter.OWNED -> found.filter { CollectionStore.owned(it, collectionIndex) > 0 }
+            OwnershipFilter.MISSING -> found.filter { CollectionStore.owned(it, collectionIndex) == 0 }
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -106,14 +117,14 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository) {
         } else if (results.isEmpty()) {
             Box(Modifier.fillMaxSize(), Alignment.Center) { Text("沒有符合的卡片") }
         } else {
-            CardGrid(results, activeDeck, deckRepo) { card ->
+            CardGrid(results, activeDeck, deckRepo, collectionIndex) { card ->
                 detail = card
             }
         }
     }
 
     detail?.let { card ->
-        CardDetailSheet(card, repo.titleCode(card)) { detail = null }
+        CardDetailSheet(card, repo.titleCode(card), collectionIndex, collectionRepo) { detail = null }
     }
 
     if (showDeckQuickView && activeDeck != null) {
@@ -377,6 +388,7 @@ private fun ActiveFilterBar(query: SearchQuery, sets: List<CardSetMeta>, onClear
         if (query.types.isNotEmpty()) add(query.types.joinToString("/") { it.label })
         if (query.triggers.isNotEmpty()) add("判定×${query.triggers.size}")
         if (query.traits.isNotEmpty()) add(query.traits.sorted().joinToString("/"))
+        if (query.ownership != OwnershipFilter.ALL) add(query.ownership.label)
     }
     if (parts.isEmpty()) return
 
@@ -469,6 +481,7 @@ private fun CardGrid(
     cards: List<Card>,
     activeDeck: DeckWithEntries?,
     deckRepo: DeckRepository,
+    collectionIndex: Map<String, Int>,
     onTap: (Card) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -478,7 +491,7 @@ private fun CardGrid(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(cards, key = { it.id }) { card ->
-            CardTile(card, activeDeck, deckRepo, onTap)
+            CardTile(card, activeDeck, deckRepo, collectionIndex, onTap)
         }
     }
 }
@@ -488,6 +501,7 @@ private fun CardTile(
     card: Card,
     activeDeck: DeckWithEntries?,
     deckRepo: DeckRepository,
+    collectionIndex: Map<String, Int>,
     onTap: (Card) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -499,6 +513,7 @@ private fun CardTile(
             ?.filter { entry -> card.printings.any { it.id == entry.printingId } }
             ?.sumOf { it.count } ?: 0
     }
+    val ownedCount = remember(collectionIndex, card) { CollectionStore.owned(card, collectionIndex) }
 
     Column(Modifier.clickable { onTap(card) }) {
         Box {
@@ -510,6 +525,23 @@ private fun CardTile(
                     .aspectRatio(63f / 88f)
                     .clip(RoundedCornerShape(4.dp)),
             )
+            if (ownedCount > 0) {
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(4.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Inventory2, contentDescription = "已擁有",
+                        tint = Color.White, modifier = Modifier.size(10.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("$ownedCount", color = Color.White,
+                        style = MaterialTheme.typography.labelSmall)
+                }
+            }
             if (countInDeck > 0) {
                 Box(
                     Modifier
@@ -561,7 +593,14 @@ private fun CardTile(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CardDetailSheet(card: Card, titleCode: String?, onDismiss: () -> Unit) {
+private fun CardDetailSheet(
+    card: Card,
+    titleCode: String?,
+    collectionIndex: Map<String, Int>,
+    collectionRepo: CollectionRepository,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -589,6 +628,53 @@ private fun CardDetailSheet(card: Card, titleCode: String?, onDismiss: () -> Uni
             }
             HorizontalDivider()
             card.textLinesZH.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            HorizontalDivider()
+            CollectionControls(card, collectionIndex) { printingId, delta ->
+                scope.launch { collectionRepo.adjust(printingId, delta) }
+            }
+        }
+    }
+}
+
+/** 我的收藏：實際擁有幾張，依刷版分開記（對應 iOS CardDetailSheet 的 collectionControls） */
+@Composable
+private fun CollectionControls(
+    card: Card,
+    collectionIndex: Map<String, Int>,
+    onAdjust: (printingId: String, delta: Int) -> Unit,
+) {
+    val total = remember(collectionIndex, card) { CollectionStore.owned(card, collectionIndex) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Inventory2, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("我的收藏", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (total > 0) {
+                Text("共 $total 張", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        card.printings.forEach { printing ->
+            val owned = collectionIndex[printing.id] ?: 0
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(printing.rarity, style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.width(48.dp))
+                Text(
+                    printing.id,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                CountStepper(owned) { delta -> onAdjust(printing.id, delta) }
+            }
         }
     }
 }

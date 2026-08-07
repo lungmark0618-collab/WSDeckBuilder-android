@@ -49,6 +49,7 @@ python3 ../WSDeckBuilder/tools/fetch_published_cards.py --out app/src/main/asset
 - [x] 篩選（等級／顏色／種類／判定標誌／特徵）
 - [x] 牌組管理（Room）、規則驗證、統計
 - [x] 牌組出圖 + QR、掃圖匯入（實測跟 iOS 出的圖互通）
+- [x] 我的收藏、缺卡比對、牌組封面選擇
 - [ ] 卡表線上更新
 
 ## 踩過的坑

@@ -33,8 +33,8 @@ import com.mark.wsdeck.data.*
 import kotlinx.coroutines.launch
 
 /**
- * 單一牌組編輯，依等級分組；卡表／統計切換，含出圖分享（對應 iOS 的
- * DeckDetailView，簡化版：不含收藏比對缺卡、封面選擇——那些留到後面）。
+ * 單一牌組編輯，依等級分組；卡表／統計／缺卡切換，含出圖分享、選擇封面
+ * （對應 iOS 的 DeckDetailView）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +42,7 @@ fun DeckDetailScreen(
     uuid: String,
     cardRepo: CardRepository,
     deckRepo: DeckRepository,
+    collectionRepo: CollectionRepository,
     onBack: () -> Unit,
 ) {
     val deckState by deckRepo.observeDeck(uuid).collectAsStateWithLifecycle(initialValue = null)
@@ -51,13 +52,31 @@ fun DeckDetailScreen(
     var mode by remember { mutableStateOf(Mode.CARDS) }
     var showRename by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showCoverPicker by remember { mutableStateOf(false) }
     var isExporting by remember { mutableStateOf(false) }
+    var showCollected by remember { mutableStateOf(false) }
     val prefs = remember { Prefs(context) }
     // 圖片／清單各自記憶，跨牌組共用一個設定（與 iOS 的 deckUsesGrid 一致）
     var usesGrid by remember { mutableStateOf(prefs.deckUsesGrid) }
 
     val items = remember(deck.entries) { groupByCard(deck.entries, cardRepo) }
     val validation = remember(items) { DeckValidator.validate(items) }
+
+    val collection by collectionRepo.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
+    val collectionIndex = remember(collection) { CollectionStore.index(collection) }
+    val trackedItems = remember(deck.entries, collectionIndex) {
+        CollectionStore.tracked(deck.entries, cardRepo.snapshot.cardById, collectionIndex)
+    }
+
+    fun exportShortages() {
+        showMenu = false
+        val text = CollectionStore.shortageText(deck.deck.name, trackedItems.filter { it.missing > 0 })
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, "分享缺卡清單"))
+    }
 
     fun exportImage() {
         showMenu = false
@@ -123,9 +142,18 @@ fun DeckDetailScreen(
                                 showMenu = false; showRename = true
                             })
                             DropdownMenuItem(
+                                text = { Text("選擇封面") },
+                                onClick = { showMenu = false; showCoverPicker = true },
+                                enabled = items.isNotEmpty(),
+                            )
+                            DropdownMenuItem(
                                 text = { Text("匯出牌組圖片（可掃回）") },
                                 onClick = ::exportImage,
                                 enabled = items.isNotEmpty(),
+                            )
+                            DropdownMenuItem(
+                                text = { Text("匯出缺卡清單") },
+                                onClick = ::exportShortages,
                             )
                         }
                     }
@@ -149,6 +177,24 @@ fun DeckDetailScreen(
                     scope.launch { deckRepo.adjust(uuid, printingId, delta) }
                 }
                 Mode.STATS -> DeckStatsView(items)
+                Mode.SHORTAGE -> DeckShortageTab(
+                    items = trackedItems,
+                    showCollected = showCollected,
+                    onToggleShowCollected = { showCollected = !showCollected },
+                    onAdjust = { printingId, delta ->
+                        scope.launch { collectionRepo.adjust(printingId, delta) }
+                    },
+                    onFill = { shortage ->
+                        scope.launch { collectionRepo.fill(shortage.printing.id, shortage.owned, shortage.needed) }
+                    },
+                    onFillAll = {
+                        scope.launch {
+                            for (shortage in trackedItems.filter { it.missing > 0 }) {
+                                collectionRepo.fill(shortage.printing.id, shortage.owned, shortage.needed)
+                            }
+                        }
+                    },
+                )
             }
         }
     }
@@ -164,9 +210,13 @@ fun DeckDetailScreen(
             onDismiss = { showRename = false },
         )
     }
+
+    if (showCoverPicker) {
+        DeckCoverPickerView(deck, cardRepo, deckRepo) { showCoverPicker = false }
+    }
 }
 
-private enum class Mode(val label: String) { CARDS("卡表"), STATS("統計") }
+private enum class Mode(val label: String) { CARDS("卡表"), STATS("統計"), SHORTAGE("缺卡") }
 
 @Composable
 private fun ValidationHeader(v: DeckValidator.Result) {

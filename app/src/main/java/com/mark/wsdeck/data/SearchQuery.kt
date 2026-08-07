@@ -10,13 +10,27 @@ data class SearchQuery(
     val traits: Set<String> = emptySet(),
     /** 作品篩選；null = 全部 */
     val titleCode: String? = null,
+    val ownership: OwnershipFilter = OwnershipFilter.ALL,
 ) {
     val hasActiveFilters: Boolean
         get() = levels.isNotEmpty() || colors.isNotEmpty() || types.isNotEmpty() ||
-            triggers.isNotEmpty() || traits.isNotEmpty() || titleCode != null
+            triggers.isNotEmpty() || traits.isNotEmpty() || titleCode != null ||
+            ownership != OwnershipFilter.ALL
 
     companion object {
         /** 卡號比對忽略大小寫與 `/` `-` */
         fun normalizeCardNumber(s: String) = s.replace("/", "").replace("-", "")
     }
+}
+
+/** 對應 iOS 的 OwnershipFilter——收藏狀態篩選，套用在 CardRepository.search() 的結果之上 */
+enum class OwnershipFilter {
+    ALL, OWNED, MISSING;
+
+    val label: String
+        get() = when (this) {
+            ALL -> "全部"
+            OWNED -> "已擁有"
+            MISSING -> "未擁有"
+        }
 }

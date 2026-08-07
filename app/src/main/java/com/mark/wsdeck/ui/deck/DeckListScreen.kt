@@ -3,27 +3,34 @@ package com.mark.wsdeck.ui.deck
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PostAdd
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.mark.wsdeck.data.CardRepository
+import com.mark.wsdeck.data.CardType
 import com.mark.wsdeck.data.DeckImageImporter
 import com.mark.wsdeck.data.DeckImporter
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.data.DeckWithEntries
 import com.mark.wsdeck.data.Prefs
+import com.mark.wsdeck.data.coverPrinting
 import kotlinx.coroutines.launch
 
 /** 牌組列表：建立、重新命名、刪除、掃圖匯入（對應 iOS 的 DeckListView） */
@@ -112,7 +119,7 @@ fun DeckListScreen(cardRepo: CardRepository, repo: DeckRepository, onOpen: (Stri
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(decks, key = { it.deck.uuid }) { d ->
-                    DeckRow(d, onClick = { onOpen(d.deck.uuid) },
+                    DeckRow(d, cardRepo, onClick = { onOpen(d.deck.uuid) },
                         onDelete = { pendingDelete = d })
                 }
             }
@@ -179,12 +186,41 @@ private fun importMessage(result: DeckImporter.Result): String {
 }
 
 @Composable
-private fun DeckRow(d: DeckWithEntries, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun DeckRow(d: DeckWithEntries, cardRepo: CardRepository, onClick: () -> Unit, onDelete: () -> Unit) {
+    // 使用者指定的封面優先，否則自動取等級最高的一張（可在牌組詳情頁「選擇封面」調整）
+    val cover = remember(d) { d.coverPrinting(cardRepo) }
+    val isClimax = remember(cover) {
+        cover?.let { p -> cardRepo.snapshot.cardById[p.id]?.cardType == CardType.CLIMAX } ?: false
+    }
+
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (cover != null) {
+                AsyncImage(
+                    model = cover.imageURL,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .width(if (isClimax) 74.dp else 52.dp)
+                        .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)
+                        .clip(RoundedCornerShape(6.dp)),
+                )
+            } else {
+                Box(
+                    Modifier
+                        .width(52.dp)
+                        .aspectRatio(63f / 88f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Style, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(d.deck.name, style = MaterialTheme.typography.titleMedium)
                 Text(
