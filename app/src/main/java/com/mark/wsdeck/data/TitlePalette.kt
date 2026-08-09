@@ -18,6 +18,11 @@ object TitlePalette {
         "SPY" -> Color(0xFF4A5568)        // 間諜家家酒：石板灰
         "KGL" -> Color(0xFFD4548C)        // 輝夜姬：桃紅
         "TSK" -> Color(0xFF3FA8A0)        // 史萊姆：水藍綠
+        "GIM" -> Color(0xFFE5B22E)        // 學園偶像大師：鮮黃
+        "OSK" -> Color(0xFFB03FA8)        // 我推的孩子：星紫
+        "PJS" -> Color(0xFF39C5BB)        // 世界計畫：初音青（官方色）
+        "AZL" -> Color(0xFF1F4E8C)        // 碧藍航線：深海藍
+        "LRC" -> Color(0xFFE8546B)        // 莉可麗絲：彼岸花紅
         else -> Color(0xFFD95999)
     }
 }
