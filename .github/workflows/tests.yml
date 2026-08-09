@@ -26,7 +26,7 @@ jobs:
       # 不需要它的其他內容
       - uses: actions/checkout@v4
         with:
-          repository: lungmark0618-collab/WSDeckBuilder
+          repository: lungmark0618-collab/WSDeckBuilder-ios
           path: ios-ref
           sparse-checkout: |
             tools/fetch_published_cards.py

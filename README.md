@@ -1,6 +1,6 @@
 # WS 牌組管理器 — Android
 
-[iOS 版](https://github.com/lungmark0618-collab/WSDeckBuilder)的 Android 移植，
+[iOS 版](https://github.com/lungmark0618-collab/WSDeckBuilder-ios)的 Android 移植，
 Kotlin + Jetpack Compose。個人自用工具，不上架。
 
 > **非官方粉絲專案**，與 Bushiroad 及各原作品權利方無任何關聯，非商業用途。
