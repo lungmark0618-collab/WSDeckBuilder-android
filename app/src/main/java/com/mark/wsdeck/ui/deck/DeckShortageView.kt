@@ -13,9 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.mark.wsdeck.data.CardType
 import com.mark.wsdeck.data.CollectionStore
+import com.mark.wsdeck.data.NetworkPolicy
+import com.mark.wsdeck.ui.shared.PolicyGatedCardImage
 
 /**
  * 缺卡清單：對照「我的收藏」算出牌組還缺哪些刷版（對應 iOS DeckDetailView 的
@@ -26,6 +27,7 @@ import com.mark.wsdeck.data.CollectionStore
 fun DeckShortageTab(
     items: List<CollectionStore.Shortage>,
     showCollected: Boolean,
+    networkPolicy: NetworkPolicy,
     onToggleShowCollected: () -> Unit,
     onAdjust: (printingId: String, delta: Int) -> Unit,
     onFill: (CollectionStore.Shortage) -> Unit,
@@ -64,7 +66,7 @@ fun DeckShortageTab(
 
         LazyColumn {
             items(visible, key = { it.printing.id }) { item ->
-                ShortageRow(item, onAdjust = onAdjust, onFill = { onFill(item) })
+                ShortageRow(item, networkPolicy = networkPolicy, onAdjust = onAdjust, onFill = { onFill(item) })
                 HorizontalDivider()
             }
         }
@@ -74,6 +76,7 @@ fun DeckShortageTab(
 @Composable
 private fun ShortageRow(
     item: CollectionStore.Shortage,
+    networkPolicy: NetworkPolicy,
     onAdjust: (printingId: String, delta: Int) -> Unit,
     onFill: () -> Unit,
 ) {
@@ -84,9 +87,10 @@ private fun ShortageRow(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AsyncImage(
-            model = item.printing.imageURL,
+        PolicyGatedCardImage(
+            url = item.printing.imageURL,
             contentDescription = item.card.nameZH,
+            networkPolicy = networkPolicy,
             modifier = Modifier
                 .width(if (isClimax) 52.dp else 36.dp)
                 .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)

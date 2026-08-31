@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,15 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
+
+// release 簽章讀 local.properties，不進版控（跟 keystore 檔案本身一樣）。
+// 沒設定時（例如 CI）release 簽章區塊整個跳過，assembleRelease 還是能編出
+// 未簽章的 APK，只是裝不上去，不會讓建置失敗。
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val releaseStoreFile = localProps.getProperty("RELEASE_STORE_FILE")
 
 android {
     namespace = "com.mark.wsdeck"
@@ -14,13 +25,32 @@ android {
         applicationId = "com.mark.wsdeck"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.2"
+    }
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD")
+                keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS")
+                keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (releaseStoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

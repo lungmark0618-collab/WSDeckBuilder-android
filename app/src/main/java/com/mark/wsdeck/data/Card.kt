@@ -49,6 +49,14 @@ data class Card(
     val defaultPrinting: Printing get() = printings.first()
 
     /**
+     * 商品代碼：卡號最後一個「-」前面的部分（如 "SFN/S108-024" → "SFN/S108"）。
+     * 同系列常常橫跨好幾波不同商品，這是用來分開瀏覽用的依據——見
+     * docs/series_breakdown_report.md（Codex 整理）："product code 取卡號
+     * 最後一個 - 前面的部分"
+     */
+    val productCode: String get() = id.substringBeforeLast('-', id)
+
+    /**
      * 搜尋比對用的預先串接字串。每次比對都重新組字串的話，
      * 4000 多張卡的即時搜尋會明顯頓——iOS 端也是同樣的處理。
      */

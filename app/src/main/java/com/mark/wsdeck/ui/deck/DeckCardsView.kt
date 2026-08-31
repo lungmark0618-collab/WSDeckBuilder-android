@@ -23,8 +23,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.mark.wsdeck.data.*
+import com.mark.wsdeck.ui.shared.PolicyGatedCardImage
 
 /**
  * 牌組卡表：依等級分組，圖片格子／文字清單可切換（對應 iOS 的 cardGrid / cardList）。
@@ -36,6 +36,7 @@ fun DeckCardsTab(
     deck: DeckWithEntries,
     items: List<CardCount>,
     usesGrid: Boolean,
+    networkPolicy: NetworkPolicy,
     editable: Boolean = true,
     onAdjust: (printingId: String, delta: Int) -> Unit,
 ) {
@@ -48,9 +49,9 @@ fun DeckCardsTab(
         return
     }
     if (usesGrid) {
-        DeckCardGrid(deck, sections, editable, onAdjust)
+        DeckCardGrid(deck, sections, editable, networkPolicy, onAdjust)
     } else {
-        DeckCardList(deck, sections, items, editable, onAdjust)
+        DeckCardList(deck, sections, items, editable, networkPolicy, onAdjust)
     }
 }
 
@@ -75,6 +76,7 @@ private fun DeckCardList(
     sections: List<LevelSection>,
     allItems: List<CardCount>,
     editable: Boolean,
+    networkPolicy: NetworkPolicy,
     onAdjust: (String, Int) -> Unit,
 ) {
     val entryByPrinting = remember(deck.entries) { deck.entries.associate { it.printingId to it.count } }
@@ -87,6 +89,7 @@ private fun DeckCardList(
                     entryByPrinting = entryByPrinting,
                     totalForName = DeckValidator.nameCount(item.card, allItems),
                     editable = editable,
+                    networkPolicy = networkPolicy,
                     onAdjust = onAdjust,
                 )
             }
@@ -100,6 +103,7 @@ private fun DeckEntryRow(
     entryByPrinting: Map<String, Int>,
     totalForName: Int,
     editable: Boolean,
+    networkPolicy: NetworkPolicy,
     onAdjust: (String, Int) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -115,9 +119,10 @@ private fun DeckEntryRow(
         ) {
             // 純文字清單太難掃視，補一張縮圖當視覺錨點（與 iOS 同樣的理由）
             val isClimax = item.card.cardType == CardType.CLIMAX
-            AsyncImage(
-                model = displayPrinting.imageURL,
+            PolicyGatedCardImage(
+                url = displayPrinting.imageURL,
                 contentDescription = item.card.nameZH,
+                networkPolicy = networkPolicy,
                 modifier = Modifier
                     .width(if (isClimax) 52.dp else 36.dp)
                     .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)
@@ -189,6 +194,7 @@ private fun DeckCardGrid(
     deck: DeckWithEntries,
     sections: List<LevelSection>,
     editable: Boolean,
+    networkPolicy: NetworkPolicy,
     onAdjust: (String, Int) -> Unit,
 ) {
     val entryByPrinting = remember(deck.entries) { deck.entries.associate { it.printingId to it.count } }
@@ -204,7 +210,7 @@ private fun DeckCardGrid(
                 if (tiles.isEmpty()) return@item
                 // 巢狀 LazyVerticalGrid 用固定高度換算，格數依畫面寬度粗抓 3~4 欄
                 FlowGrid(tiles) { card, printing ->
-                    DeckGridTile(card, printing, entryByPrinting[printing.id] ?: 0, editable, onAdjust)
+                    DeckGridTile(card, printing, entryByPrinting[printing.id] ?: 0, editable, networkPolicy, onAdjust)
                 }
             }
         }
@@ -239,13 +245,15 @@ private fun DeckGridTile(
     printing: Printing,
     count: Int,
     editable: Boolean,
+    networkPolicy: NetworkPolicy,
     onAdjust: (String, Int) -> Unit,
 ) {
     Column {
         Box {
-            AsyncImage(
-                model = printing.imageURL,
+            PolicyGatedCardImage(
+                url = printing.imageURL,
                 contentDescription = card.nameZH,
+                networkPolicy = networkPolicy,
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(63f / 88f)

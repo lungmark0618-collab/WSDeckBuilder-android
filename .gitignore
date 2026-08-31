@@ -3,6 +3,10 @@ build/
 .gradle/
 local.properties
 
+# release 簽章金鑰——遺失就再也不能用同一個身分更新這個 App 給已安裝的人，
+# 不能進版控，只存在這台電腦上，要自己另外備份
+keystore/
+
 # 卡片資料不進版控（著作權考量，與 iOS 版同樣的處理）。
 # 用 ../WSDeckBuilder/tools/fetch_published_cards.py --out app/src/main/assets 取得
 app/src/main/assets/*_cards.json

@@ -1,8 +1,6 @@
 package com.mark.wsdeck.data
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,12 +27,6 @@ object CardDataStore {
     fun directory(context: Context): File =
         File(context.noBackupFilesDir, "CardData").apply { mkdirs() }
 
-    fun hasDownloadedData(context: Context): Boolean =
-        directory(context).listFiles { f -> f.name.endsWith("_cards.json") }?.isNotEmpty() == true
-
-    fun removeAll(context: Context) {
-        directory(context).listFiles { f -> f.name.endsWith("_cards.json") }?.forEach { it.delete() }
-    }
 }
 
 @Serializable
@@ -47,28 +39,16 @@ data class UpdateManifest(
     @Serializable
     data class SetEntry(
         @SerialName("title_code") val titleCode: String,
+        /** 這部作品第一次出現（本機還沒下載過卡表）時，通知要顯示中文名稱
+         *  只能靠這個——本機資料庫查不到還沒下載過的作品，對應 iOS 同名欄位 */
+        @SerialName("title_name_zh") val titleNameZH: String? = null,
         val file: String,
         @SerialName("data_version") val dataVersion: Int,
         val url: String,
     )
 }
 
-/** 自動（靜默）檢查前的網路把關；手動按「檢查更新」不受這個限制 */
-object NetworkPolicy {
-    fun allowsAutomaticDownload(context: Context): Boolean {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            ?: return false
-        val network = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(network) ?: return false
-        if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return false
-        if (cm.restrictBackgroundStatus == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED) {
-            return false
-        }
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-    }
-}
-
-class DataUpdater(private val context: Context) {
+class DataUpdater(private val context: Context, private val networkPolicy: NetworkPolicy) {
 
     sealed class State {
         object Idle : State()
@@ -106,14 +86,17 @@ class DataUpdater(private val context: Context) {
         const val SUPPORTED_SCHEMA_VERSION = 1
         const val MANIFEST_URL =
             "https://raw.githubusercontent.com/lungmark0618-collab/WSDeckBuilder-data/main/manifest.json"
-        private const val CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000
     }
 
-    /** App 啟動時呼叫：查不到就沿用本地資料，不跳錯誤打擾（跟 iOS 同樣的原則） */
+    /**
+     * App 啟動時呼叫：查不到就沿用本地資料，不跳錯誤打擾（跟 iOS 同樣的原則）。
+     *
+     * 原本有「一天查一次」的節流，但這樣使用者得自己按「檢查更新」才看得到通知，
+     * 想要的其實是「開 App 就自動查、有新的話通知自己跳出來」。manifest.json
+     * 就幾 KB、放在 GitHub raw CDN 後面，每次開 App 都查一次完全負擔得起。
+     */
     suspend fun checkSilently(cardRepo: CardRepository) {
-        val last = _ui.value.lastCheckedAt
-        if (last != null && System.currentTimeMillis() - last < CHECK_INTERVAL_MS) return
-        if (!NetworkPolicy.allowsAutomaticDownload(context)) return
+        if (!networkPolicy.ui.value.allowsAutomaticDownload) return
         check(cardRepo, silent = true)
     }
 
@@ -164,15 +147,9 @@ class DataUpdater(private val context: Context) {
         _ui.update { it.copy(state = State.UpToDate) }
     }
 
-    suspend fun revertToBundled(cardRepo: CardRepository) {
-        CardDataStore.removeAll(context)
-        cardRepo.reload()
-        prefs.cardDataLastCheckedAt = 0L
-        _ui.update { UiState() }
-    }
-
     private suspend fun install(item: Pending) = withContext(Dispatchers.IO) {
         val bytes = fetchBytes(item.url)
+        networkPolicy.recordDownload(bytes = bytes.size, viaExpensivePath = networkPolicy.ui.value.isExpensive)
         val decoded = cardJson.decodeFromString<CardSet>(String(bytes))
         if (decoded.meta.titleCode != item.titleCode) {
             throw IOException("下載的內容跟預期的作品對不上")
@@ -235,7 +212,7 @@ fun computePending(
         if (entry.dataVersion <= current) return@mapNotNull null
         DataUpdater.Pending(
             titleCode = entry.titleCode,
-            titleName = local?.titleNameZH ?: entry.titleCode,
+            titleName = local?.titleNameZH ?: entry.titleNameZH ?: entry.titleCode,
             file = entry.file,
             url = resolvedUrl,
             fromVersion = current,

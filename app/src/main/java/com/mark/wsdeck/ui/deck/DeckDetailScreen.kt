@@ -43,6 +43,7 @@ fun DeckDetailScreen(
     cardRepo: CardRepository,
     deckRepo: DeckRepository,
     collectionRepo: CollectionRepository,
+    networkPolicy: NetworkPolicy,
     onBack: () -> Unit,
 ) {
     val deckState by deckRepo.observeDeck(uuid).collectAsStateWithLifecycle(initialValue = null)
@@ -173,12 +174,13 @@ fun DeckDetailScreen(
                 }
             }
             when (mode) {
-                Mode.CARDS -> DeckCardsTab(deck, items, usesGrid) { printingId, delta ->
+                Mode.CARDS -> DeckCardsTab(deck, items, usesGrid, networkPolicy) { printingId, delta ->
                     scope.launch { deckRepo.adjust(uuid, printingId, delta) }
                 }
                 Mode.STATS -> DeckStatsView(items)
                 Mode.SHORTAGE -> DeckShortageTab(
                     items = trackedItems,
+                    networkPolicy = networkPolicy,
                     showCollected = showCollected,
                     onToggleShowCollected = { showCollected = !showCollected },
                     onAdjust = { printingId, delta ->
@@ -212,7 +214,7 @@ fun DeckDetailScreen(
     }
 
     if (showCoverPicker) {
-        DeckCoverPickerView(deck, cardRepo, deckRepo) { showCoverPicker = false }
+        DeckCoverPickerView(deck, cardRepo, deckRepo, networkPolicy) { showCoverPicker = false }
     }
 }
 

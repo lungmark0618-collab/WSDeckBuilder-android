@@ -19,6 +19,26 @@ object DeckImporter {
 
     class NoCardsFoundException : Exception("內容裡找不到任何卡號。")
 
+    class UnreadableTextException : Exception("檔案格式無法辨識，請確認每一行都是卡號。")
+
+    private val bareIdLine = Regex("^[A-Za-z0-9]+/[A-Za-z0-9]+-[A-Za-z0-9]+\$")
+
+    /**
+     * 貓罐子等工具匯出的純卡號清單：沒有張數標記，同一張卡有幾張就重複幾行。
+     * 整份文字必須每一行都是卡號，混雜其他格式一律視為無法辨識。
+     */
+    fun parseRepeatedIds(text: String): DeckImageExporter.Payload.Parsed {
+        val counts = linkedMapOf<String, Int>()
+        for (rawLine in text.lines()) {
+            val line = rawLine.trim()
+            if (line.isEmpty()) continue
+            if (!bareIdLine.matches(line)) throw UnreadableTextException()
+            counts[line] = (counts[line] ?: 0) + 1
+        }
+        if (counts.isEmpty()) throw UnreadableTextException()
+        return DeckImageExporter.Payload.Parsed("匯入的牌組", counts.map { it.key to it.value })
+    }
+
     suspend fun createDeck(
         parsed: DeckImageExporter.Payload.Parsed,
         cardRepo: CardRepository,

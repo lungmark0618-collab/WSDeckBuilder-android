@@ -4,6 +4,8 @@
     <!-- 卡圖與卡表線上更新 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- App 沒上架商店，自己下載 APK 給使用者裝，需要這個權限才能跳出安裝畫面 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".WSDeckApp"

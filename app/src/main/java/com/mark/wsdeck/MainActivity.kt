@@ -3,6 +3,7 @@ package com.mark.wsdeck
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -12,18 +13,34 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.*
+import com.mark.wsdeck.data.AnnouncementCenter
+import com.mark.wsdeck.data.AppUpdater
+import com.mark.wsdeck.data.AppearanceSettings
 import com.mark.wsdeck.data.CardRepository
 import com.mark.wsdeck.data.CollectionRepository
 import com.mark.wsdeck.data.DataUpdater
 import com.mark.wsdeck.data.DeckRepository
+import com.mark.wsdeck.data.FavoriteTitlesStore
+import com.mark.wsdeck.data.NetworkPolicy
+import com.mark.wsdeck.data.OnboardingState
+import com.mark.wsdeck.data.OnboardingTab
 import com.mark.wsdeck.ui.browser.CatalogScreen
 import com.mark.wsdeck.ui.deck.DeckDetailScreen
 import com.mark.wsdeck.ui.deck.DeckListScreen
+import com.mark.wsdeck.ui.onboarding.OnboardingOverlay
+import com.mark.wsdeck.ui.settings.AppearanceSettingsScreen
 import com.mark.wsdeck.ui.settings.SettingsScreen
+import com.mark.wsdeck.ui.shared.GlassTabBar
+import com.mark.wsdeck.ui.shared.GlassTabBarItem
+import com.mark.wsdeck.ui.theme.AppSurface
+import kotlinx.coroutines.launch
+import com.mark.wsdeck.ui.theme.AppTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,21 +48,31 @@ class MainActivity : ComponentActivity() {
         val cardRepo = CardRepository(applicationContext)
         val deckRepo = DeckRepository(applicationContext)
         val collectionRepo = CollectionRepository(applicationContext)
-        val updater = DataUpdater(applicationContext)
+        val networkPolicy = NetworkPolicy(applicationContext)
+        val updater = DataUpdater(applicationContext, networkPolicy)
+        val appUpdater = AppUpdater(applicationContext)
+        val announcements = AnnouncementCenter(applicationContext, networkPolicy)
+        val appearance = AppearanceSettings(applicationContext)
+        val onboarding = OnboardingState(applicationContext)
+        val favorites = FavoriteTitlesStore(applicationContext)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                Surface(Modifier.fillMaxSize()) {
-                    AppRoot(cardRepo, deckRepo, collectionRepo, updater)
-                }
+            val appearanceUi by appearance.ui.collectAsStateWithLifecycle()
+            AppTheme(appearanceUi) {
+                AppRoot(cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding, favorites)
             }
         }
     }
 }
 
-private sealed class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    object Catalog : Tab("catalog", "圖鑑", Icons.Filled.Search)
-    object Decks : Tab("decks", "牌組", Icons.Filled.Style)
-    object Settings : Tab("settings", "設定", Icons.Filled.Settings)
+private sealed class Tab(
+    val route: String,
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val onboardingTab: OnboardingTab,
+) {
+    object Catalog : Tab("catalog", "圖鑑", Icons.Filled.Search, OnboardingTab.CATALOG)
+    object Decks : Tab("decks", "牌組", Icons.Filled.Style, OnboardingTab.DECKS)
+    object Settings : Tab("settings", "設定", Icons.Filled.Settings, OnboardingTab.SETTINGS)
 }
 private val tabs = listOf(Tab.Catalog, Tab.Decks, Tab.Settings)
 
@@ -55,13 +82,47 @@ private fun AppRoot(
     deckRepo: DeckRepository,
     collectionRepo: CollectionRepository,
     updater: DataUpdater,
+    appUpdater: AppUpdater,
+    announcements: AnnouncementCenter,
+    appearance: AppearanceSettings,
+    networkPolicy: NetworkPolicy,
+    onboarding: OnboardingState,
+    favorites: FavoriteTitlesStore,
 ) {
     // null = 還在載入。5.7 MB 的 JSON 要解一下，先蓋住空畫面
     var loaded by remember { mutableStateOf<Boolean?>(null) }
+
+    suspend fun checkForUpdates() {
+        updater.checkSilently(cardRepo)
+        (updater.ui.value.state as? DataUpdater.State.UpdateAvailable)?.let {
+            announcements.noteDataUpdates(it.pending)
+        }
+        announcements.checkSilently()
+    }
+
     LaunchedEffect(Unit) {
         loaded = cardRepo.load()
+        favorites.migrate(cardRepo)
         // 查更新絕不擋開場：卡表載完、畫面已經能用了才在背景問一次（跟 iOS 同樣的順序）
-        updater.checkSilently(cardRepo)
+        checkForUpdates()
+        // App 本體有沒有新版只在冷啟動查一次就好，彈窗按「稍後」以後同一次
+        // 使用過程不會一直跳出來煩人，下次重新開 App 才會再問
+        appUpdater.check(silent = true)
+    }
+
+    // 只有冷啟動才會跑上面那個 LaunchedEffect(Unit)，使用者切去別的 App 再切
+    // 回來（沒有真的把 App 滑掉重開）並不會重新觸發——這才是「還是要手動按
+    // 檢查更新」的真正原因，要另外盯 Activity 回到前景（ON_RESUME）才會再查一次
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && loaded == true) {
+                scope.launch { checkForUpdates() }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     when (loaded) {
@@ -75,7 +136,54 @@ private fun AppRoot(
         false -> Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
             Text(cardRepo.loadError ?: "資料載入失敗")
         }
-        true -> MainScaffold(cardRepo, deckRepo, collectionRepo, updater)
+        true -> MainScaffold(cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding, favorites)
+    }
+
+    val appUpdateState by appUpdater.state.collectAsStateWithLifecycle()
+    when (val s = appUpdateState) {
+        is AppUpdater.State.UpdateAvailable -> AlertDialog(
+            onDismissRequest = { appUpdater.dismiss() },
+            title = { Text("有新版本可用") },
+            text = {
+                Column {
+                    Text("版本 ${s.versionName}", style = MaterialTheme.typography.bodyMedium)
+                    if (s.notes.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(s.notes, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { scope.launch { appUpdater.downloadAndInstall(s.downloadUrl) } }) {
+                    Text("更新")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { appUpdater.dismiss() }) { Text("稍後") }
+            },
+        )
+        is AppUpdater.State.Downloading -> AlertDialog(
+            onDismissRequest = {},
+            title = { Text("下載更新中…") },
+            text = {
+                if (s.total > 0) {
+                    LinearProgressIndicator(
+                        progress = { s.done.toFloat() / s.total },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {},
+        )
+        is AppUpdater.State.Failed -> AlertDialog(
+            onDismissRequest = { appUpdater.dismiss() },
+            title = { Text("更新失敗") },
+            text = { Text(s.message) },
+            confirmButton = { TextButton(onClick = { appUpdater.dismiss() }) { Text("好") } },
+        )
+        AppUpdater.State.Idle, AppUpdater.State.Checking, AppUpdater.State.UpToDate -> {}
     }
 }
 
@@ -85,36 +193,51 @@ private fun MainScaffold(
     deckRepo: DeckRepository,
     collectionRepo: CollectionRepository,
     updater: DataUpdater,
+    appUpdater: AppUpdater,
+    announcements: AnnouncementCenter,
+    appearance: AppearanceSettings,
+    networkPolicy: NetworkPolicy,
+    onboarding: OnboardingState,
+    favorites: FavoriteTitlesStore,
 ) {
     val navController = rememberNavController()
 
+    // 每一步該在哪個分頁，教學自己切過去——不然從「設定」按幫助重新開始教學，
+    // 第一步「搜尋卡片」會卡在設定頁，找不到搜尋列，對應 iOS RootTabView 同段邏輯
+    LaunchedEffect(onboarding.currentStep) {
+        val targetTab = onboarding.currentStep?.tab ?: return@LaunchedEffect
+        val target = tabs.first { it.onboardingTab == targetTab }
+        navController.navigate(target.route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(AppSurface.background)) {
     Scaffold(
+        containerColor = Color.Transparent,
         bottomBar = {
             val backStack by navController.currentBackStackEntryAsState()
             val currentDestination = backStack?.destination
             // 牌組詳情頁沒有自己的分頁列項目，靠上一頁的返回鍵回去，
             // 但底部列仍要顯示、且判斷「牌組」分頁為選取狀態
-            NavigationBar {
-                tabs.forEach { tab ->
-                    val selected = currentDestination?.hierarchy?.any {
-                        it.route == tab.route || (tab == Tab.Decks && it.route == "deck/{uuid}")
-                    } == true
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = {
-                            navController.navigate(tab.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
-                    )
-                }
-            }
+            val selectedTab = tabs.firstOrNull { tab ->
+                currentDestination?.hierarchy?.any {
+                    it.route == tab.route || (tab == Tab.Decks && it.route == "deck/{uuid}")
+                } == true
+            } ?: Tab.Catalog
+            GlassTabBar(
+                items = tabs.map { GlassTabBarItem(it, it.label, it.icon) },
+                selected = selectedTab,
+                onSelect = { tab ->
+                    navController.navigate(tab.route) {
+                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+            )
         },
     ) { padding ->
         NavHost(
@@ -122,15 +245,26 @@ private fun MainScaffold(
             startDestination = Tab.Catalog.route,
             modifier = Modifier.padding(padding),
         ) {
-            composable(Tab.Catalog.route) { CatalogScreen(cardRepo, deckRepo, collectionRepo) }
+            composable(Tab.Catalog.route) {
+                CatalogScreen(cardRepo, deckRepo, collectionRepo, announcements, appearance, networkPolicy, onboarding, favorites)
+            }
             composable(Tab.Decks.route) {
-                DeckListScreen(cardRepo, deckRepo) { uuid -> navController.navigate("deck/$uuid") }
+                DeckListScreen(cardRepo, deckRepo, networkPolicy, onboarding) { uuid -> navController.navigate("deck/$uuid") }
             }
             composable("deck/{uuid}") { backStackEntry ->
                 val uuid = backStackEntry.arguments?.getString("uuid") ?: return@composable
-                DeckDetailScreen(uuid, cardRepo, deckRepo, collectionRepo) { navController.popBackStack() }
+                DeckDetailScreen(uuid, cardRepo, deckRepo, collectionRepo, networkPolicy) { navController.popBackStack() }
             }
-            composable(Tab.Settings.route) { SettingsScreen(cardRepo, updater) }
+            composable(Tab.Settings.route) {
+                SettingsScreen(cardRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding) {
+                    navController.navigate("settings/appearance")
+                }
+            }
+            composable("settings/appearance") {
+                AppearanceSettingsScreen(appearance, onboarding) { navController.popBackStack() }
+            }
         }
+    }
+        OnboardingOverlay(onboarding)
     }
 }

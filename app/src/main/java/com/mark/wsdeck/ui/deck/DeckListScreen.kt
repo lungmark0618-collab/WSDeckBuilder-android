@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.Style
@@ -22,21 +23,31 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
 import com.mark.wsdeck.data.CardRepository
 import com.mark.wsdeck.data.CardType
 import com.mark.wsdeck.data.DeckImageImporter
 import com.mark.wsdeck.data.DeckImporter
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.data.DeckWithEntries
+import com.mark.wsdeck.data.NetworkPolicy
+import com.mark.wsdeck.data.OnboardingState
+import com.mark.wsdeck.data.OnboardingStep
 import com.mark.wsdeck.data.Prefs
 import com.mark.wsdeck.data.coverPrinting
+import com.mark.wsdeck.ui.onboarding.onboardingAnchor
+import com.mark.wsdeck.ui.shared.PolicyGatedCardImage
 import kotlinx.coroutines.launch
 
 /** 牌組列表：建立、重新命名、刪除、掃圖匯入（對應 iOS 的 DeckListView） */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeckListScreen(cardRepo: CardRepository, repo: DeckRepository, onOpen: (String) -> Unit) {
+fun DeckListScreen(
+    cardRepo: CardRepository,
+    repo: DeckRepository,
+    networkPolicy: NetworkPolicy,
+    onboarding: OnboardingState,
+    onOpen: (String) -> Unit,
+) {
     val decks by repo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
     var showCreate by remember { mutableStateOf(false) }
     var showAddMenu by remember { mutableStateOf(false) }
@@ -78,11 +89,43 @@ fun DeckListScreen(cardRepo: CardRepository, repo: DeckRepository, onOpen: (Stri
         }
     }
 
+    val filePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val text = try {
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            } catch (e: Exception) {
+                null
+            }
+            if (text == null) {
+                importError = "無法讀取這個檔案。"
+                return@launch
+            }
+            try {
+                val parsed = DeckImporter.parseRepeatedIds(text)
+                val result = DeckImporter.createDeck(
+                    parsed, cardRepo, repo, decks.map { it.deck.name },
+                )
+                prefs.activeDeckUuid = result.deckUuid
+                importResult = result
+            } catch (e: DeckImporter.NoCardsFoundException) {
+                importError = e.message
+            } catch (e: DeckImporter.UnreadableTextException) {
+                importError = e.message
+            }
+        }
+    }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text("牌組") }) },
         floatingActionButton = {
             Box {
-                FloatingActionButton(onClick = { showAddMenu = true }) {
+                FloatingActionButton(
+                    onClick = { showAddMenu = true },
+                    modifier = Modifier.onboardingAnchor(OnboardingStep.CREATE_DECK, onboarding),
+                ) {
                     Icon(Icons.Filled.Add, contentDescription = "新增牌組")
                 }
                 DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
@@ -103,6 +146,14 @@ fun DeckListScreen(cardRepo: CardRepository, repo: DeckRepository, onOpen: (Stri
                             )
                         },
                     )
+                    DropdownMenuItem(
+                        text = { Text("從檔案匯入牌表") },
+                        leadingIcon = { Icon(Icons.Filled.Folder, contentDescription = null) },
+                        onClick = {
+                            showAddMenu = false
+                            filePicker.launch(arrayOf("text/plain", "*/*"))
+                        },
+                    )
                 }
             }
         },
@@ -119,7 +170,7 @@ fun DeckListScreen(cardRepo: CardRepository, repo: DeckRepository, onOpen: (Stri
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(decks, key = { it.deck.uuid }) { d ->
-                    DeckRow(d, cardRepo, onClick = { onOpen(d.deck.uuid) },
+                    DeckRow(d, cardRepo, networkPolicy, onClick = { onOpen(d.deck.uuid) },
                         onDelete = { pendingDelete = d })
                 }
             }
@@ -132,6 +183,7 @@ fun DeckListScreen(cardRepo: CardRepository, repo: DeckRepository, onOpen: (Stri
             initial = "",
             onConfirm = { name ->
                 scope.launch { repo.createDeck(name.ifBlank { "新牌組" }) }
+                onboarding.notify(OnboardingStep.CREATE_DECK)
                 showCreate = false
             },
             onDismiss = { showCreate = false },
@@ -186,7 +238,13 @@ private fun importMessage(result: DeckImporter.Result): String {
 }
 
 @Composable
-private fun DeckRow(d: DeckWithEntries, cardRepo: CardRepository, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun DeckRow(
+    d: DeckWithEntries,
+    cardRepo: CardRepository,
+    networkPolicy: NetworkPolicy,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+) {
     // 使用者指定的封面優先，否則自動取等級最高的一張（可在牌組詳情頁「選擇封面」調整）
     val cover = remember(d) { d.coverPrinting(cardRepo) }
     val isClimax = remember(cover) {
@@ -199,9 +257,10 @@ private fun DeckRow(d: DeckWithEntries, cardRepo: CardRepository, onClick: () ->
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (cover != null) {
-                AsyncImage(
-                    model = cover.imageURL,
+                PolicyGatedCardImage(
+                    url = cover.imageURL,
                     contentDescription = null,
+                    networkPolicy = networkPolicy,
                     modifier = Modifier
                         .width(if (isClimax) 74.dp else 52.dp)
                         .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)

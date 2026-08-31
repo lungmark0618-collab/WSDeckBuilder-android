@@ -23,14 +23,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import coil3.compose.AsyncImage
 import com.mark.wsdeck.data.Card
 import com.mark.wsdeck.data.CardRepository
 import com.mark.wsdeck.data.CardType
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.data.DeckWithEntries
+import com.mark.wsdeck.data.NetworkPolicy
 import com.mark.wsdeck.data.Printing
 import com.mark.wsdeck.data.coverPrinting
+import com.mark.wsdeck.ui.shared.PolicyGatedCardImage
 import kotlinx.coroutines.launch
 
 /**
@@ -43,6 +44,7 @@ fun DeckCoverPickerView(
     deck: DeckWithEntries,
     cardRepo: CardRepository,
     deckRepo: DeckRepository,
+    networkPolicy: NetworkPolicy,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -129,9 +131,10 @@ fun DeckCoverPickerView(
                             Modifier.clickable { setCover(tile.printing.id) },
                         ) {
                             Box {
-                                AsyncImage(
-                                    model = tile.printing.imageURL,
+                                PolicyGatedCardImage(
+                                    url = tile.printing.imageURL,
                                     contentDescription = tile.card.nameZH,
+                                    networkPolicy = networkPolicy,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .aspectRatio(63f / 88f)

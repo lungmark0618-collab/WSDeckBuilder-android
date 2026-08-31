@@ -19,6 +19,8 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material3.*
@@ -33,10 +35,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
 import com.mark.wsdeck.data.*
 import com.mark.wsdeck.ui.deck.CountStepper
 import com.mark.wsdeck.ui.deck.DeckCardsTab
+import com.mark.wsdeck.ui.notifications.NotificationBellButton
+import com.mark.wsdeck.ui.onboarding.onboardingAnchor
+import com.mark.wsdeck.ui.shared.PolicyGatedCardImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -47,7 +51,16 @@ import kotlinx.coroutines.launch
  * 想直接找卡的人不必先選作品。
  */
 @Composable
-fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository, collectionRepo: CollectionRepository) {
+fun CatalogScreen(
+    repo: CardRepository,
+    deckRepo: DeckRepository,
+    collectionRepo: CollectionRepository,
+    announcements: AnnouncementCenter,
+    appearance: AppearanceSettings,
+    networkPolicy: NetworkPolicy,
+    onboarding: OnboardingState,
+    favorites: FavoriteTitlesStore,
+) {
     var query by remember { mutableStateOf(SearchQuery()) }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
     var detail by remember { mutableStateOf<Card?>(null) }
@@ -66,6 +79,16 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository, collectionRepo
 
     val showsGallery = query.keyword.isEmpty() && !query.hasActiveFilters
 
+    // 供 AppearanceSettings 的「強調色跟著作品」模式使用，對應 iOS 的
+    // currentTitleCode——拆過彈的話 query.titleCode 是商品代碼（如
+    // "SFN/S108"），TitlePalette 認的是原本的 titleCode，要轉一手
+    LaunchedEffect(query.titleCode) {
+        val scope = query.titleCode
+        val resolved = scope?.let { s -> repo.snapshot.browsableSets.firstOrNull { it.id == s }?.titleCode }
+            ?: scope ?: ""
+        appearance.setCurrentTitleCode(resolved)
+    }
+
     // 打字時每個字都重搜會頓；停一下再搜，中途的輸入直接作廢。收藏狀態不是
     // CardRepository.search() 認得的條件，跟 iOS 一樣在搜完之後另外過濾一次。
     LaunchedEffect(query, collectionIndex) {
@@ -73,7 +96,10 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository, collectionRepo
             results = emptyList()
             return@LaunchedEffect
         }
-        if (query.keyword.isNotEmpty()) delay(180)
+        if (query.keyword.isNotEmpty()) {
+            onboarding.notify(OnboardingStep.SEARCH)
+            delay(180)
+        }
         val found = repo.search(query)
         results = when (query.ownership) {
             OwnershipFilter.ALL -> found
@@ -94,12 +120,17 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository, collectionRepo
         SearchBarRow(
             keyword = query.keyword,
             pinnedTitle = query.titleCode?.let { code ->
-                repo.snapshot.sets.firstOrNull { it.titleCode == code }?.titleNameZH
+                repo.snapshot.browsableSets.firstOrNull { it.id == code }?.displayNameZH
             },
             hasActiveFilters = query.hasActiveFilters,
             onKeyword = { query = query.copy(keyword = it) },
             onClearTitle = { query = SearchQuery() },
-            onOpenFilter = { showFilter = true },
+            onOpenFilter = {
+                showFilter = true
+                onboarding.notify(OnboardingStep.FILTER)
+            },
+            announcements = announcements,
+            onboarding = onboarding,
         )
         ActiveFilterBar(query, repo.snapshot.sets) { query = SearchQuery(titleCode = query.titleCode) }
 
@@ -107,20 +138,25 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository, collectionRepo
         // ⚠ 這不是 iOS 有的功能——iOS 圖鑑只靠格子上的張數徽章，沒有現成的
         // 縮圖列可看，這是額外補的：直接貼在卡片結果上方，點一下拉出完整清單。
         activeDeck?.let { deck ->
-            ActiveDeckStrip(deck, repo) { showDeckQuickView = true }
+            ActiveDeckStrip(deck, repo, networkPolicy) { showDeckQuickView = true }
         }
 
         if (showsGallery) {
-            TitleGallery(repo.snapshot.sets, repo.snapshot.cards.size) {
+            TitleGallery(repo.snapshot.browsableSets, repo.snapshot.cards.size, favorites) {
                 query = SearchQuery(titleCode = it)
             }
         } else if (results.isEmpty()) {
             Box(Modifier.fillMaxSize(), Alignment.Center) { Text("沒有符合的卡片") }
         } else {
-            CardGrid(results, activeDeck, deckRepo, collectionIndex) { card ->
+            CardGrid(results, activeDeck, deckRepo, collectionIndex, networkPolicy, onboarding) { card ->
                 detail = card
             }
         }
+    }
+
+    // 引導教學：點開卡片詳情，等於完成了「查看卡片」這一步
+    LaunchedEffect(detail) {
+        if (detail != null) onboarding.notify(OnboardingStep.VIEW_CARD)
     }
 
     detail?.let { card ->
@@ -128,14 +164,13 @@ fun CatalogScreen(repo: CardRepository, deckRepo: DeckRepository, collectionRepo
     }
 
     if (showDeckQuickView && activeDeck != null) {
-        ActiveDeckQuickView(activeDeck, repo, deckRepo) { showDeckQuickView = false }
+        ActiveDeckQuickView(activeDeck, repo, deckRepo, networkPolicy) { showDeckQuickView = false }
     }
 
     if (showFilter) {
         FilterSheet(
             query = query,
-            sets = repo.snapshot.sets,
-            allTraits = repo.snapshot.allTraits,
+            repo = repo,
             onQueryChange = { query = it },
             onDismiss = { showFilter = false },
         )
@@ -207,6 +242,7 @@ private fun ActiveDeckPickerRow(
 private fun ActiveDeckStrip(
     deck: DeckWithEntries,
     cardRepo: CardRepository,
+    networkPolicy: NetworkPolicy,
     onClick: () -> Unit,
 ) {
     val entryByPrinting = remember(deck.entries) { deck.entries.associate { it.printingId to it.count } }
@@ -254,9 +290,10 @@ private fun ActiveDeckStrip(
                     ?: cc.card.defaultPrinting
                 val isClimax = cc.card.cardType == CardType.CLIMAX
                 Box {
-                    AsyncImage(
-                        model = printing.imageURL,
+                    PolicyGatedCardImage(
+                        url = printing.imageURL,
                         contentDescription = cc.card.nameZH,
+                        networkPolicy = networkPolicy,
                         modifier = Modifier
                             .width(if (isClimax) 62.dp else 44.dp)
                             .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)
@@ -288,6 +325,7 @@ private fun ActiveDeckQuickView(
     deck: DeckWithEntries,
     cardRepo: CardRepository,
     deckRepo: DeckRepository,
+    networkPolicy: NetworkPolicy,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -315,7 +353,7 @@ private fun ActiveDeckQuickView(
             }
         }
         Box(Modifier.heightIn(max = 480.dp)) {
-            DeckCardsTab(deck, items, usesGrid, editable = true) { printingId, delta ->
+            DeckCardsTab(deck, items, usesGrid, networkPolicy, editable = true) { printingId, delta ->
                 scope.launch { deckRepo.adjust(deck.deck.uuid, printingId, delta) }
             }
         }
@@ -331,6 +369,8 @@ private fun SearchBarRow(
     onKeyword: (String) -> Unit,
     onClearTitle: () -> Unit,
     onOpenFilter: () -> Unit,
+    announcements: AnnouncementCenter,
+    onboarding: OnboardingState,
 ) {
     Column {
         Row(
@@ -359,7 +399,16 @@ private fun SearchBarRow(
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
+                modifier = Modifier.onboardingAnchor(OnboardingStep.FILTER, onboarding),
             ) { Icon(Icons.Filled.FilterList, contentDescription = "篩選") }
+            // 只在最上層（沒鎖定作品）放鈴鐺，鎖進單一作品後就不重複顯示，跟 iOS 一致
+            if (pinnedTitle == null) {
+                NotificationBellButton(
+                    announcements,
+                    modifier = Modifier.onboardingAnchor(OnboardingStep.NOTIFICATIONS, onboarding),
+                    onOpen = { onboarding.notify(OnboardingStep.NOTIFICATIONS) },
+                )
+            }
         }
         if (pinnedTitle != null) {
             Row(
@@ -409,20 +458,33 @@ private fun ActiveFilterBar(query: SearchQuery, sets: List<CardSetMeta>, onClear
 
 @Composable
 private fun TitleGallery(
-    sets: List<CardSetMeta>,
+    sets: List<BrowsableSet>,
     totalCount: Int,
+    favorites: FavoriteTitlesStore,
     onSelect: (String) -> Unit,
 ) {
     // 卡多的作品排前面——照代號排等於隨機順序
     val ordered = remember(sets) { sets.sortedByDescending { it.cardCount } }
+    val favoriteSets = ordered.filter { favorites.isFavorite(it.id) }
+    val otherSets = ordered.filter { !favorites.isFavorite(it.id) }
+
     LazyVerticalGrid(
         columns = GridCells.Adaptive(158.dp),
         contentPadding = PaddingValues(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(ordered, key = { it.titleCode }) { set ->
-            TitleTile(set) { onSelect(set.titleCode) }
+        if (favoriteSets.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionLabel("已收藏") }
+            items(favoriteSets, key = { it.id }) { set ->
+                TitleTile(set, favorites) { onSelect(set.id) }
+            }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                SectionLabel("所有作品", Modifier.padding(top = 8.dp))
+            }
+        }
+        items(otherSets, key = { it.id }) { set ->
+            TitleTile(set, favorites) { onSelect(set.id) }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             Text(
@@ -435,42 +497,69 @@ private fun TitleGallery(
 }
 
 @Composable
-private fun TitleTile(set: CardSetMeta, onClick: () -> Unit) {
+private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun TitleTile(set: BrowsableSet, favorites: FavoriteTitlesStore, onClick: () -> Unit) {
     val color = TitlePalette.accent(set.titleCode)
-    Column(
+    val isFavorite = favorites.isFavorite(set.id)
+    Box(
         Modifier
             .height(104.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.7f))))
-            .clickable(onClick = onClick)
-            .padding(12.dp),
+            .clickable(onClick = onClick),
     ) {
-        Text(
-            set.titleNameZH,
-            style = MaterialTheme.typography.titleSmall,
-            color = Color.White,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            set.titleNameJP,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.85f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.weight(1f))
-        Row(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Text(
+                    set.displayNameZH,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             Text(
-                set.titleCode,
+                set.titleNameJP,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.8f),
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.weight(1f))
-            Text(
-                "${set.cardCount}",
-                style = MaterialTheme.typography.labelLarge,
-                color = Color.White,
+            Row(Modifier.fillMaxWidth()) {
+                Text(
+                    set.productCode ?: set.titleCode,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.8f),
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "${set.cardCount}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White,
+                )
+            }
+        }
+        // 觸控範圍撐大到 40dp，不然一顆小星星在色塊右上角很難點準
+        IconButton(
+            onClick = { favorites.toggle(set.id) },
+            modifier = Modifier.align(Alignment.TopEnd).size(40.dp),
+        ) {
+            Icon(
+                if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                contentDescription = if (isFavorite) "取消收藏" else "收藏",
+                tint = if (isFavorite) androidx.compose.ui.graphics.Color(0xFFFFD54F) else Color.White.copy(alpha = 0.85f),
             )
         }
     }
@@ -482,6 +571,8 @@ private fun CardGrid(
     activeDeck: DeckWithEntries?,
     deckRepo: DeckRepository,
     collectionIndex: Map<String, Int>,
+    networkPolicy: NetworkPolicy,
+    onboarding: OnboardingState,
     onTap: (Card) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -491,7 +582,7 @@ private fun CardGrid(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(cards, key = { it.id }) { card ->
-            CardTile(card, activeDeck, deckRepo, collectionIndex, onTap)
+            CardTile(card, activeDeck, deckRepo, collectionIndex, networkPolicy, onboarding, onTap)
         }
     }
 }
@@ -502,6 +593,8 @@ private fun CardTile(
     activeDeck: DeckWithEntries?,
     deckRepo: DeckRepository,
     collectionIndex: Map<String, Int>,
+    networkPolicy: NetworkPolicy,
+    onboarding: OnboardingState,
     onTap: (Card) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -517,9 +610,10 @@ private fun CardTile(
 
     Column(Modifier.clickable { onTap(card) }) {
         Box {
-            AsyncImage(
-                model = card.defaultPrinting.imageURL,
+            PolicyGatedCardImage(
+                url = card.defaultPrinting.imageURL,
                 contentDescription = card.nameZH,
+                networkPolicy = networkPolicy,
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(63f / 88f)
@@ -583,8 +677,11 @@ private fun CardTile(
                         scope.launch {
                             deckRepo.adjust(activeDeck.deck.uuid, card.defaultPrinting.id, 1)
                         }
+                        onboarding.notify(OnboardingStep.ADD_TO_DECK)
                     },
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier
+                        .size(28.dp)
+                        .onboardingAnchor(OnboardingStep.ADD_TO_DECK, onboarding),
                 ) { Icon(Icons.Filled.Add, contentDescription = "增加", modifier = Modifier.size(16.dp)) }
             }
         }

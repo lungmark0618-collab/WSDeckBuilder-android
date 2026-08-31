@@ -2,4 +2,6 @@
 <paths>
     <!-- 出圖存在快取的 shared_images/，分享完可隨時清掉 -->
     <cache-path name="shared_images" path="shared_images/" />
+    <!-- 下載的新版 APK，裝完可隨時清掉 -->
+    <cache-path name="updates" path="updates/" />
 </paths>
