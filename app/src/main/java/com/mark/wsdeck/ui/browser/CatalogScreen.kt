@@ -2,6 +2,7 @@ package com.mark.wsdeck.ui.browser
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -30,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -108,7 +111,33 @@ fun CatalogScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    // 選了作品/商品之後，整個畫面往右滑就退回作品選單——這裡沒有真正的
+    // NavController 堆疊可以回退（切作品是靠 query 狀態切換，不是 push
+    // 新畫面），用手勢直接把 query 重置回去模擬「回上一頁」的效果，
+    // 對應 iOS CardBrowserView 那邊掛在 navigationDestination 上的
+    // swipeToGoBack()。只有明顯偏水平的右滑才觸發，不要跟垂直捲動搶手勢。
+    Column(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(query.titleCode) {
+                if (query.titleCode == null) return@pointerInput
+                var totalDrag = 0f
+                var totalVertical = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDrag = 0f; totalVertical = 0f },
+                    onHorizontalDrag = { change, dragAmount ->
+                        totalDrag += dragAmount
+                        totalVertical += change.positionChange().y
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        if (totalDrag > 80f && kotlin.math.abs(totalVertical) < 60f) {
+                            query = SearchQuery()
+                        }
+                    },
+                )
+            },
+    ) {
         ActiveDeckPickerRow(
             decks = decks,
             activeDeck = activeDeck,

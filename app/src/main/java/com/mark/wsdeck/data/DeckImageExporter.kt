@@ -36,8 +36,19 @@ object DeckImageExporter {
      */
     object Payload {
         const val PREFIX = "WSD1"
+        /** 包成 URL 而不是丟純文字進 QR：系統相機掃到純文字只會顯示文字，
+         *  掃到看得懂的網址才會跳「用『WS 牌組管理器』開啟」，朋友不用特地
+         *  開這個 App 的掃描功能，直接用內建相機掃就能跳轉預覽匯入。
+         *  scheme 要跟 AndroidManifest 的 intent-filter 對得上。 */
+        const val URL_SCHEME = "wsdeck"
+        const val URL_HOST = "import"
 
         fun encode(deckName: String, entries: List<DeckEntryEntity>): String {
+            val raw = encodeRaw(deckName, entries)
+            return "$URL_SCHEME://$URL_HOST?d=${java.net.URLEncoder.encode(raw, "UTF-8")}"
+        }
+
+        private fun encodeRaw(deckName: String, entries: List<DeckEntryEntity>): String {
             val body = entries
                 .sortedBy { it.printingId }
                 .joinToString(";") { "${it.printingId}:${it.count}" }
@@ -48,8 +59,19 @@ object DeckImageExporter {
 
         data class Parsed(val name: String, val entries: List<Pair<String, Int>>)
 
-        /** 回傳 null 表示不是本 App 的載荷 */
+        /** 回傳 null 表示不是本 App 的載荷。吃兩種格式：新的
+         *  wsdeck://import?d=... 網址，跟舊版直接掃圖片時可能還留著的純文字
+         *  格式（在 App 內用相簿選圖那條路還是會遇到）。 */
         fun decode(text: String): Parsed? {
+            val uri = runCatching { android.net.Uri.parse(text) }.getOrNull()
+            if (uri != null && uri.scheme == URL_SCHEME && uri.host == URL_HOST) {
+                val raw = uri.getQueryParameter("d") ?: return null
+                return decodeRaw(raw)
+            }
+            return decodeRaw(text)
+        }
+
+        private fun decodeRaw(text: String): Parsed? {
             val parts = text.split("|", limit = 3)
             if (parts.size != 3 || parts[0] != PREFIX) return null
             val entries = parts[2].split(";").mapNotNull { chunk ->

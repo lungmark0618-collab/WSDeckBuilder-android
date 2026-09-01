@@ -25,6 +25,7 @@ import com.mark.wsdeck.data.AppearanceSettings
 import com.mark.wsdeck.data.CardRepository
 import com.mark.wsdeck.data.CollectionRepository
 import com.mark.wsdeck.data.DataUpdater
+import com.mark.wsdeck.data.DeckImageExporter
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.data.FavoriteTitlesStore
 import com.mark.wsdeck.data.NetworkPolicy
@@ -43,8 +44,14 @@ import kotlinx.coroutines.launch
 import com.mark.wsdeck.ui.theme.AppTheme
 
 class MainActivity : ComponentActivity() {
+    // 朋友用系統相機（不是這個 App 內建的掃描功能）掃分享出去的牌組 QR 時，
+    // 靠 wsdeck://import 這個 scheme 喚起這個 Activity——冷啟動走 onCreate
+    // 的 intent，App 已經開著時走 onNewIntent，兩邊都要接住同一個狀態
+    private var pendingDeepLink by mutableStateOf<android.net.Uri?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingDeepLink = intent?.data
         val cardRepo = CardRepository(applicationContext)
         val deckRepo = DeckRepository(applicationContext)
         val collectionRepo = CollectionRepository(applicationContext)
@@ -58,9 +65,20 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appearanceUi by appearance.ui.collectAsStateWithLifecycle()
             AppTheme(appearanceUi) {
-                AppRoot(cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding, favorites)
+                AppRoot(
+                    cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements,
+                    appearance, networkPolicy, onboarding, favorites,
+                    deepLinkUri = pendingDeepLink,
+                    onDeepLinkConsumed = { pendingDeepLink = null },
+                )
             }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingDeepLink = intent.data
     }
 }
 
@@ -88,6 +106,8 @@ private fun AppRoot(
     networkPolicy: NetworkPolicy,
     onboarding: OnboardingState,
     favorites: FavoriteTitlesStore,
+    deepLinkUri: android.net.Uri? = null,
+    onDeepLinkConsumed: () -> Unit = {},
 ) {
     // null = 還在載入。5.7 MB 的 JSON 要解一下，先蓋住空畫面
     var loaded by remember { mutableStateOf<Boolean?>(null) }
@@ -184,6 +204,25 @@ private fun AppRoot(
             confirmButton = { TextButton(onClick = { appUpdater.dismiss() }) { Text("好") } },
         )
         AppUpdater.State.Idle, AppUpdater.State.Checking, AppUpdater.State.UpToDate -> {}
+    }
+
+    // 朋友用系統相機掃分享出去的牌組 QR 時，App 靠 wsdeck:// 連結被喚起，
+    // 不管當下停在哪個分頁都要能跳出預覽，所以掛在根層而不是牌組分頁裡
+    val parsedImport = remember(deepLinkUri) {
+        deepLinkUri?.let { DeckImageExporter.Payload.decode(it.toString()) }
+    }
+    if (deepLinkUri != null && parsedImport == null) {
+        AlertDialog(
+            onDismissRequest = onDeepLinkConsumed,
+            title = { Text("無法辨識連結") },
+            text = { Text("這個連結不是本 App 的牌組分享連結。") },
+            confirmButton = { TextButton(onClick = onDeepLinkConsumed) { Text("好") } },
+        )
+    } else if (parsedImport != null) {
+        com.mark.wsdeck.ui.deck.DeckImportPreviewDialog(
+            parsed = parsedImport, cardRepo = cardRepo, deckRepo = deckRepo,
+            onDismiss = onDeepLinkConsumed,
+        )
     }
 }
 

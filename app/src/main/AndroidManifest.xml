@@ -14,10 +14,19 @@
         android:theme="@style/Theme.WSDeck">
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- 朋友用系統相機（不是這個 App 內建的掃描功能）掃分享出去的牌組 QR
+                 時，靠這個 scheme 直接跳轉進來——見 DeckImageExporter.Payload -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="wsdeck" android:host="import" />
             </intent-filter>
         </activity>
 

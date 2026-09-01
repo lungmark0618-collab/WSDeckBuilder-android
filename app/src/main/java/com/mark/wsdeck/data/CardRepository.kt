@@ -169,7 +169,7 @@ class CardRepository(private val context: Context) {
                 { titleByCardId[it.id] ?: "" },
                 { if (it.cardType == CardType.CLIMAX) 1 else 0 },
                 { it.level ?: 99 },
-                { it.color.ordinal },
+                { it.color?.ordinal ?: 9 },
                 { it.id },
             )
         )
@@ -209,7 +209,7 @@ class CardRepository(private val context: Context) {
                 if (!matches) return@filter false
             }
             if (query.levels.isNotEmpty() && card.level !in query.levels) return@filter false
-            if (query.colors.isNotEmpty() && card.color !in query.colors) return@filter false
+            if (query.colors.isNotEmpty() && (card.color == null || card.color !in query.colors)) return@filter false
             if (query.types.isNotEmpty() && card.cardType !in query.types) return@filter false
             if (query.triggers.isNotEmpty() && card.trigger !in query.triggers) return@filter false
             if (query.traits.isNotEmpty() &&

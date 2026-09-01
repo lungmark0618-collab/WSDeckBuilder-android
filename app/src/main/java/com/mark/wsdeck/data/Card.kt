@@ -33,7 +33,8 @@ data class Card(
     @SerialName("name_jp") val nameJP: String,
     @SerialName("name_zh") val nameZH: String,
     @SerialName("card_type") val cardType: CardType,
-    val color: CardColor,
+    /** 極少數 SEC（隱藏）卡官方根本沒公開內容，連顏色都是 null，所以這裡是 nullable */
+    val color: CardColor? = null,
     /** 事件與 CX 沒有等級 */
     val level: Int? = null,
     val cost: Int? = null,
