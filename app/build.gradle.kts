@@ -25,8 +25,8 @@ android {
         applicationId = "com.mark.wsdeck"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "0.4"
     }
 
     signingConfigs {
@@ -99,6 +99,10 @@ dependencies {
     implementation(libs.coil.network)
     implementation(libs.datastore.preferences)
     implementation(libs.zxing.core)
+    implementation(libs.camerax.core)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
     implementation(libs.okio)
     implementation(libs.okhttp)
 

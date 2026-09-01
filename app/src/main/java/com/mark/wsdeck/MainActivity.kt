@@ -221,7 +221,7 @@ private fun AppRoot(
     } else if (parsedImport != null) {
         com.mark.wsdeck.ui.deck.DeckImportPreviewDialog(
             parsed = parsedImport, cardRepo = cardRepo, deckRepo = deckRepo,
-            onDismiss = onDeepLinkConsumed,
+            networkPolicy = networkPolicy, onDismiss = onDeepLinkConsumed,
         )
     }
 }

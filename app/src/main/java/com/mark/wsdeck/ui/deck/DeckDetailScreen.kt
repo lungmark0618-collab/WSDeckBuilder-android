@@ -54,6 +54,7 @@ fun DeckDetailScreen(
     var showRename by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showCoverPicker by remember { mutableStateOf(false) }
+    var showQRPresent by remember { mutableStateOf(false) }
     var isExporting by remember { mutableStateOf(false) }
     var showCollected by remember { mutableStateOf(false) }
     val prefs = remember { Prefs(context) }
@@ -148,6 +149,11 @@ fun DeckDetailScreen(
                                 enabled = items.isNotEmpty(),
                             )
                             DropdownMenuItem(
+                                text = { Text("出示 QR 給朋友掃") },
+                                onClick = { showMenu = false; showQRPresent = true },
+                                enabled = items.isNotEmpty(),
+                            )
+                            DropdownMenuItem(
                                 text = { Text("匯出牌組圖片（可掃回）") },
                                 onClick = ::exportImage,
                                 enabled = items.isNotEmpty(),
@@ -215,6 +221,10 @@ fun DeckDetailScreen(
 
     if (showCoverPicker) {
         DeckCoverPickerView(deck, cardRepo, deckRepo, networkPolicy) { showCoverPicker = false }
+    }
+
+    if (showQRPresent) {
+        DeckQRPresentDialog(deckName = deck.deck.name, entries = deck.entries) { showQRPresent = false }
     }
 }
 

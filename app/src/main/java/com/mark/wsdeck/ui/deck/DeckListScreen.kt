@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.Style
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mark.wsdeck.data.CardRepository
 import com.mark.wsdeck.data.CardType
+import com.mark.wsdeck.data.DeckImageExporter
 import com.mark.wsdeck.data.DeckImageImporter
 import com.mark.wsdeck.data.DeckImporter
 import com.mark.wsdeck.data.DeckRepository
@@ -54,6 +56,7 @@ fun DeckListScreen(
     var pendingDelete by remember { mutableStateOf<DeckWithEntries?>(null) }
     var importResult by remember { mutableStateOf<DeckImporter.Result?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
+    var showQRScanner by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
@@ -133,6 +136,11 @@ fun DeckListScreen(
                         text = { Text("新增空牌組") },
                         leadingIcon = { Icon(Icons.Filled.PostAdd, contentDescription = null) },
                         onClick = { showAddMenu = false; showCreate = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("開啟相機掃描") },
+                        leadingIcon = { Icon(Icons.Filled.PhotoCamera, contentDescription = null) },
+                        onClick = { showAddMenu = false; showQRScanner = true },
                     )
                     DropdownMenuItem(
                         text = { Text("掃牌組圖片匯入") },
@@ -220,6 +228,31 @@ fun DeckListScreen(
             title = { Text("匯入失敗") },
             text = { Text(message) },
             confirmButton = { TextButton(onClick = { importError = null }) { Text("好") } },
+        )
+    }
+
+    if (showQRScanner) {
+        DeckQRScannerDialog(
+            onDetect = { text ->
+                showQRScanner = false
+                val parsed = DeckImageExporter.Payload.decode(text)
+                if (parsed == null) {
+                    importError = "掃到的內容不是本 App 的牌組分享資料。"
+                    return@DeckQRScannerDialog
+                }
+                scope.launch {
+                    try {
+                        val result = DeckImporter.createDeck(
+                            parsed, cardRepo, repo, decks.map { it.deck.name },
+                        )
+                        prefs.activeDeckUuid = result.deckUuid
+                        importResult = result
+                    } catch (e: DeckImporter.NoCardsFoundException) {
+                        importError = e.message
+                    }
+                }
+            },
+            onDismiss = { showQRScanner = false },
         )
     }
 }
