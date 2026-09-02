@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Style
@@ -31,6 +32,7 @@ import com.mark.wsdeck.data.FavoriteTitlesStore
 import com.mark.wsdeck.data.NetworkPolicy
 import com.mark.wsdeck.data.OnboardingState
 import com.mark.wsdeck.data.OnboardingTab
+import com.mark.wsdeck.data.WSNewsRepository
 import com.mark.wsdeck.ui.browser.CatalogScreen
 import com.mark.wsdeck.ui.deck.DeckDetailScreen
 import com.mark.wsdeck.ui.deck.DeckListScreen
@@ -62,12 +64,13 @@ class MainActivity : ComponentActivity() {
         val appearance = AppearanceSettings(applicationContext)
         val onboarding = OnboardingState(applicationContext)
         val favorites = FavoriteTitlesStore(applicationContext)
+        val newsRepo = WSNewsRepository(applicationContext)
         setContent {
             val appearanceUi by appearance.ui.collectAsStateWithLifecycle()
             AppTheme(appearanceUi) {
                 AppRoot(
                     cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements,
-                    appearance, networkPolicy, onboarding, favorites,
+                    appearance, networkPolicy, onboarding, favorites, newsRepo,
                     deepLinkUri = pendingDeepLink,
                     onDeepLinkConsumed = { pendingDeepLink = null },
                 )
@@ -86,13 +89,16 @@ private sealed class Tab(
     val route: String,
     val label: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val onboardingTab: OnboardingTab,
+    // 首頁沒有對應的教學步驟，null 就好——不能借用 CATALOG，不然下面
+    // 反查「這個 onboardingTab 對應哪個 Tab」會因為首頁排在前面而誤配到它
+    val onboardingTab: OnboardingTab?,
 ) {
+    object Home : Tab("home", "首頁", Icons.Filled.Home, null)
     object Catalog : Tab("catalog", "圖鑑", Icons.Filled.Search, OnboardingTab.CATALOG)
     object Decks : Tab("decks", "牌組", Icons.Filled.Style, OnboardingTab.DECKS)
     object Settings : Tab("settings", "設定", Icons.Filled.Settings, OnboardingTab.SETTINGS)
 }
-private val tabs = listOf(Tab.Catalog, Tab.Decks, Tab.Settings)
+private val tabs = listOf(Tab.Home, Tab.Catalog, Tab.Decks, Tab.Settings)
 
 @Composable
 private fun AppRoot(
@@ -106,6 +112,7 @@ private fun AppRoot(
     networkPolicy: NetworkPolicy,
     onboarding: OnboardingState,
     favorites: FavoriteTitlesStore,
+    newsRepo: WSNewsRepository,
     deepLinkUri: android.net.Uri? = null,
     onDeepLinkConsumed: () -> Unit = {},
 ) {
@@ -156,7 +163,7 @@ private fun AppRoot(
         false -> Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
             Text(cardRepo.loadError ?: "資料載入失敗")
         }
-        true -> MainScaffold(cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding, favorites)
+        true -> MainScaffold(cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding, favorites, newsRepo)
     }
 
     val appUpdateState by appUpdater.state.collectAsStateWithLifecycle()
@@ -238,6 +245,7 @@ private fun MainScaffold(
     networkPolicy: NetworkPolicy,
     onboarding: OnboardingState,
     favorites: FavoriteTitlesStore,
+    newsRepo: WSNewsRepository,
 ) {
     val navController = rememberNavController()
 
@@ -265,7 +273,7 @@ private fun MainScaffold(
                 currentDestination?.hierarchy?.any {
                     it.route == tab.route || (tab == Tab.Decks && it.route == "deck/{uuid}")
                 } == true
-            } ?: Tab.Catalog
+            } ?: Tab.Home
             GlassTabBar(
                 items = tabs.map { GlassTabBarItem(it, it.label, it.icon) },
                 selected = selectedTab,
@@ -281,9 +289,12 @@ private fun MainScaffold(
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = Tab.Catalog.route,
+            startDestination = Tab.Home.route,
             modifier = Modifier.padding(padding),
         ) {
+            composable(Tab.Home.route) {
+                com.mark.wsdeck.ui.home.HomeScreen(newsRepo, announcements, onboarding)
+            }
             composable(Tab.Catalog.route) {
                 CatalogScreen(cardRepo, deckRepo, collectionRepo, announcements, appearance, networkPolicy, onboarding, favorites)
             }
