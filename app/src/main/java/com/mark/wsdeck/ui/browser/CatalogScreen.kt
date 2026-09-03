@@ -550,7 +550,7 @@ private fun TitleTile(set: BrowsableSet, favorites: FavoriteTitlesStore, onClick
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Text(
-                    set.displayNameZH,
+                    set.titleNameZH,
                     style = MaterialTheme.typography.titleSmall,
                     color = Color.White,
                     maxLines = 2,
@@ -558,13 +558,31 @@ private fun TitleTile(set: BrowsableSet, favorites: FavoriteTitlesStore, onClick
                     modifier = Modifier.weight(1f),
                 )
             }
-            Text(
-                set.titleNameJP,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.85f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    set.titleNameJP,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                // 拆彈的官方彈次標籤（如「Vol.2」）獨立成小徽章，不跟標題文字
+                // 擠在一起——之前直接接在標題後面，長一點的官方名稱會很難掃視
+                set.waveLabel?.let { wave ->
+                    Text(
+                        wave,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .background(Color.White.copy(alpha = 0.22f), CircleShape)
+                            .padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
+            }
             Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth()) {
                 Text(

@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Newspaper
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mark.wsdeck.data.AnnouncementCenter
@@ -76,7 +78,7 @@ fun HomeScreen(
             else -> LazyColumn(
                 Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ui.errorMessage?.let { message ->
                     item {
@@ -84,7 +86,7 @@ fun HomeScreen(
                             message,
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFE68A00),
-                            modifier = Modifier.padding(bottom = 8.dp),
+                            modifier = Modifier.padding(bottom = 4.dp),
                         )
                     }
                 }
@@ -104,35 +106,54 @@ fun HomeScreen(
 
 @Composable
 private fun NewsRow(item: WSNewsItem, onClick: () -> Unit) {
-    Column(
+    val accent = item.categories.firstOrNull()?.let { categoryColor(it) }
+        ?: MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
         Modifier
             .fillMaxWidth()
+            // Row 預設高度是 wrap content，子項目的 fillMaxHeight 沒有邊界可撐，
+            // 加這行讓左側色條能撐到跟內文一樣高（Compose 等高 Row 的標準寫法）
+            .height(IntrinsicSize.Min)
             .clip(MaterialTheme.shapes.medium)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            .clickable(onClick = onClick)
-            .padding(12.dp),
+            .clickable(onClick = onClick),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            item.categories.forEach { category ->
+        // 左側色條標出這則公告的分類，掃視列表時比純文字色塊更容易一眼區分
+        Box(Modifier.width(4.dp).fillMaxHeight().background(accent.copy(alpha = 0.85f)))
+        Column(Modifier.weight(1f).padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                item.categories.forEach { category ->
+                    Text(
+                        category,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = categoryColor(category),
+                        modifier = Modifier
+                            .padding(end = 6.dp)
+                            .background(categoryColor(category).copy(alpha = 0.16f), CircleShape)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
                 Text(
-                    category,
+                    item.date,
                     style = MaterialTheme.typography.labelSmall,
-                    color = categoryColor(category),
-                    modifier = Modifier
-                        .padding(end = 6.dp)
-                        .background(categoryColor(category).copy(alpha = 0.15f), CircleShape)
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(6.dp))
             Text(
-                item.date,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                item.displayTitle,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
             )
         }
-        Spacer(Modifier.height(4.dp))
-        Text(item.displayTitle, style = MaterialTheme.typography.bodyMedium)
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.align(Alignment.CenterVertically).padding(end = 12.dp),
+        )
     }
 }
 
