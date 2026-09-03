@@ -21,6 +21,11 @@ enum class OnboardingStep(val title: String, val body: String, val tab: Onboardi
         "歡迎使用本程式，接下來我會教你如何使用這些功能。",
         null,
     ),
+    HOME_INTRO(
+        "首頁公告",
+        "上面可以左右滑動看最新商品，下面是官方公告，點進去可以看我們整理過的重點再決定要不要去官網看完整內容。",
+        OnboardingTab.HOME,
+    ),
     SEARCH(
         "搜尋卡片",
         "在上面的搜尋列輸入卡號、卡名或能力文字，試著打「hololive」看看。",
@@ -69,7 +74,7 @@ enum class OnboardingStep(val title: String, val body: String, val tab: Onboardi
 }
 
 /** 教學步驟該切去哪個分頁，對應 MainActivity 裡的 Tab 路由 */
-enum class OnboardingTab { CATALOG, DECKS, SETTINGS }
+enum class OnboardingTab { HOME, CATALOG, DECKS, SETTINGS }
 
 /**
  * 引導教學的狀態機，對應 iOS 的 OnboardingCoordinator。真正的「做了什麼」由各畫面

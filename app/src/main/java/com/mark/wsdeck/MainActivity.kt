@@ -91,11 +91,9 @@ private sealed class Tab(
     val route: String,
     val label: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    // 首頁沒有對應的教學步驟，null 就好——不能借用 CATALOG，不然下面
-    // 反查「這個 onboardingTab 對應哪個 Tab」會因為首頁排在前面而誤配到它
     val onboardingTab: OnboardingTab?,
 ) {
-    object Home : Tab("home", "首頁", Icons.Filled.Home, null)
+    object Home : Tab("home", "首頁", Icons.Filled.Home, OnboardingTab.HOME)
     object Catalog : Tab("catalog", "圖鑑", Icons.Filled.Search, OnboardingTab.CATALOG)
     object Decks : Tab("decks", "牌組", Icons.Filled.Style, OnboardingTab.DECKS)
     object Settings : Tab("settings", "設定", Icons.Filled.Settings, OnboardingTab.SETTINGS)

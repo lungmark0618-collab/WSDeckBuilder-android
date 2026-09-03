@@ -132,7 +132,10 @@ fun HomeScreen(
             ) {
                 if (heroItems.isNotEmpty()) {
                     item {
-                        HeroCarousel(heroItems, networkPolicy) { selectedItem = it }
+                        HeroCarousel(
+                            heroItems, networkPolicy,
+                            modifier = Modifier.onboardingAnchor(OnboardingStep.HOME_INTRO, onboarding),
+                        ) { selectedItem = it }
                     }
                 }
                 ui.errorMessage?.let { message ->
@@ -242,9 +245,14 @@ private fun NewsRow(item: WSNewsItem, onClick: () -> Unit) {
  *  滿版顯示、左右滑動切換、底部疊標題跟日期，比純文字列表更能一眼抓住
  *  「現在有什麼新東西」 */
 @Composable
-private fun HeroCarousel(items: List<WSNewsItem>, networkPolicy: NetworkPolicy, onSelect: (WSNewsItem) -> Unit) {
+private fun HeroCarousel(
+    items: List<WSNewsItem>,
+    networkPolicy: NetworkPolicy,
+    modifier: Modifier = Modifier,
+    onSelect: (WSNewsItem) -> Unit,
+) {
     val pagerState = rememberPagerState(pageCount = { items.size })
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HorizontalPager(state = pagerState) { page ->
             val item = items[page]
             HeroSlide(item, categoryColor(item.categories.firstOrNull() ?: ""), networkPolicy) {
