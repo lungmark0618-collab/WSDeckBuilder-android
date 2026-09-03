@@ -33,6 +33,7 @@ import com.mark.wsdeck.data.NetworkPolicy
 import com.mark.wsdeck.data.OnboardingState
 import com.mark.wsdeck.data.OnboardingTab
 import com.mark.wsdeck.data.WSNewsRepository
+import com.mark.wsdeck.data.WaveNameRepository
 import com.mark.wsdeck.ui.browser.CatalogScreen
 import com.mark.wsdeck.ui.deck.DeckDetailScreen
 import com.mark.wsdeck.ui.deck.DeckListScreen
@@ -65,12 +66,13 @@ class MainActivity : ComponentActivity() {
         val onboarding = OnboardingState(applicationContext)
         val favorites = FavoriteTitlesStore(applicationContext)
         val newsRepo = WSNewsRepository(applicationContext)
+        val waveNameRepo = WaveNameRepository(applicationContext)
         setContent {
             val appearanceUi by appearance.ui.collectAsStateWithLifecycle()
             AppTheme(appearanceUi) {
                 AppRoot(
                     cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements,
-                    appearance, networkPolicy, onboarding, favorites, newsRepo,
+                    appearance, networkPolicy, onboarding, favorites, newsRepo, waveNameRepo,
                     deepLinkUri = pendingDeepLink,
                     onDeepLinkConsumed = { pendingDeepLink = null },
                 )
@@ -113,6 +115,7 @@ private fun AppRoot(
     onboarding: OnboardingState,
     favorites: FavoriteTitlesStore,
     newsRepo: WSNewsRepository,
+    waveNameRepo: WaveNameRepository,
     deepLinkUri: android.net.Uri? = null,
     onDeepLinkConsumed: () -> Unit = {},
 ) {
@@ -128,13 +131,17 @@ private fun AppRoot(
     }
 
     LaunchedEffect(Unit) {
-        loaded = cardRepo.load()
+        loaded = cardRepo.load(waveNameRepo.labels)
         favorites.migrate(cardRepo)
         // 查更新絕不擋開場：卡表載完、畫面已經能用了才在背景問一次（跟 iOS 同樣的順序）
         checkForUpdates()
         // App 本體有沒有新版只在冷啟動查一次就好，彈窗按「稍後」以後同一次
         // 使用過程不會一直跳出來煩人，下次重新開 App 才會再問
         appUpdater.check(silent = true)
+        // 官方彈次標籤跟卡表一樣背景查新版，有變才重建圖鑑分類
+        if (waveNameRepo.refresh()) {
+            cardRepo.applyWaveNameOverrides(waveNameRepo.labels)
+        }
     }
 
     // 只有冷啟動才會跑上面那個 LaunchedEffect(Unit)，使用者切去別的 App 再切

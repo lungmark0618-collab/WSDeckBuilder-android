@@ -19,9 +19,9 @@ data class BrowsableSet(
     val cardCount: Int,
     /** 原始商品代碼（如 "SFN/S108"），拆彈的作品才有值，圖鑑卡片右下角當輔助資訊顯示 */
     val productCode: String? = null,
-    /** null＝沒拆彈，顯示原本作品名；有值＝顯示「作品名 第X彈」。順序是拿商品代碼
-     *  裡的數字排的，不保證等於官方實際發售順序（見 docs/series_breakdown_report.md
-     *  的提醒），使用者要求先用這個顯示，之後有錯再個別修正 */
+    /** null＝沒拆彈，顯示原本作品名；有值＝顯示「作品名 標籤」。標籤優先用
+     *  wave_names.json 提供的官方商品名稱（如「Vol.2」「新装版」），該系列
+     *  官方資料還不夠乾淨時才退回舊的「第一彈/第二彈」數字猜測法 */
     val waveLabel: String? = null,
 ) {
     val displayNameZH: String get() = waveLabel?.let { "$titleNameZH $it" } ?: titleNameZH
@@ -51,10 +51,16 @@ class CardRepository(private val context: Context) {
     var loadError: String? = null
         private set
 
-    /** 重新載入，更新卡表下載完之後呼叫（跟 load() 是同一套邏輯，只是取個對應 iOS reload() 的名字） */
-    suspend fun reload(): Boolean = load()
+    /** productCode → 官方彈次標籤；重建 browsableSets 時要用 */
+    private var waveNameOverrides: Map<String, String> = emptyMap()
 
-    suspend fun load(): Boolean = withContext(Dispatchers.Default) {
+    /** 重新載入，更新卡表下載完之後呼叫（跟 load() 是同一套邏輯，只是取個對應 iOS reload() 的名字） */
+    suspend fun reload(): Boolean = load(waveNameOverrides)
+
+    /** [waveNameOverrides] 是啟動時已經有的官方彈次標籤快取（見 WaveNameRepository），
+     *  這樣圖鑑一開始建立就是官方名稱，不用等網路查完才從數字猜測法換過來 */
+    suspend fun load(waveNameOverrides: Map<String, String> = emptyMap()): Boolean = withContext(Dispatchers.Default) {
+        this@CardRepository.waveNameOverrides = waveNameOverrides
         val assetNames = try {
             context.assets.list("")!!.filter { it.endsWith("_cards.json") }
         } catch (e: Exception) {
@@ -101,7 +107,7 @@ class CardRepository(private val context: Context) {
         }
 
         val sortedSets = sets.sortedBy { it.titleCode }
-        val (browsableSets, productCodes) = buildBrowsableSets(sortedSets, cards, titleByCardId)
+        val (browsableSets, productCodes) = buildBrowsableSets(sortedSets, cards, titleByCardId, waveNameOverrides)
 
         snapshot = Snapshot(
             cards = sortCards(cards, titleByCardId),
@@ -116,12 +122,23 @@ class CardRepository(private val context: Context) {
         true
     }
 
+    /** WaveNameRepository 背景抓到新版官方彈次標籤時呼叫，只重建 browsableSets，
+     *  不用重新解一次整份卡表 JSON（對應 iOS CardDatabase.applyWaveNameOverrides） */
+    fun applyWaveNameOverrides(overrides: Map<String, String>) {
+        if (snapshot.cards.isEmpty()) return
+        waveNameOverrides = overrides
+        val (browsableSets, productCodes) =
+            buildBrowsableSets(snapshot.sets, snapshot.cards, snapshot.titleByCardId, overrides)
+        snapshot = snapshot.copy(browsableSets = browsableSets, productCodes = productCodes)
+    }
+
     /** 同系列橫跨多個商品代碼的作品拆成好幾個瀏覽單位；只有 1 個代碼的作品
      *  維持原樣，用 titleCode 當 id（對應 iOS CardDatabase.buildBrowsableSets） */
     private fun buildBrowsableSets(
         sets: List<CardSetMeta>,
         cards: List<Card>,
         titleByCardId: Map<String, String>,
+        waveNameOverrides: Map<String, String>,
     ): Pair<List<BrowsableSet>, Set<String>> {
         val cardsByTitle = cards.groupBy { titleByCardId[it.id] ?: "" }
         val result = mutableListOf<BrowsableSet>()
@@ -136,15 +153,26 @@ class CardRepository(private val context: Context) {
                     cardCount = titleCards.size, productCode = null, waveLabel = null,
                 )
             } else {
-                // 依商品代碼裡的數字排序（如 S108 < S128 < S136）當作發售順序的推測依據
+                // 依商品代碼裡的數字排序（如 S108 < S128 < S136）當顯示順序
                 val ordered = codes.sortedWith(compareBy({ numericSuffix(it) }, { it }))
+                // 官方標籤要整個系列每一彈都查得到才採用（見 make_wave_names.py
+                // 的產生規則），免得同系列一部分用官方名稱、一部分用猜的
+                val officialLabels: Map<String, String>? =
+                    ordered.associateWith { waveNameOverrides[it] }
+                        .takeIf { m -> m.values.all { it != null } }
+                        ?.mapValues { it.value!! }
                 ordered.forEachIndexed { index, code ->
                     val count = titleCards.count { it.productCode == code }
+                    val label = if (officialLabels != null) {
+                        officialLabels[code]?.takeIf { it.isNotEmpty() }
+                    } else {
+                        waveLabel(index + 1)
+                    }
                     result += BrowsableSet(
                         id = code, titleCode = meta.titleCode,
                         titleNameZH = meta.titleNameZH, titleNameJP = meta.titleNameJP,
                         cardCount = count, productCode = code,
-                        waveLabel = waveLabel(index + 1),
+                        waveLabel = label,
                     )
                     productCodes += code
                 }
