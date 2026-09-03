@@ -1,11 +1,13 @@
 package com.mark.wsdeck.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -17,10 +19,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mark.wsdeck.data.AnnouncementCenter
@@ -82,7 +90,31 @@ fun HomeScreen(
             }
 
             else -> LazyColumn(
-                Modifier.fillMaxSize().padding(padding),
+                Modifier.fillMaxSize().padding(padding).background(Color(0xFF05060C)).drawBehind {
+                    // 全息光暈——呼應集換式卡牌本身的「卡背」質感，
+                    // 淡淡三團色暈疊在近黑底色上，不搶內容但讓畫面不死板
+                    drawRect(
+                        Brush.radialGradient(
+                            listOf(Color(0xFFBF5AF2).copy(alpha = 0.20f), Color.Transparent),
+                            center = Offset(size.width * 0.88f, size.height * -0.02f),
+                            radius = 480f,
+                        ),
+                    )
+                    drawRect(
+                        Brush.radialGradient(
+                            listOf(Color(0xFFFF9F0A).copy(alpha = 0.10f), Color.Transparent),
+                            center = Offset(size.width * -0.1f, size.height * 0.10f),
+                            radius = 460f,
+                        ),
+                    )
+                    drawRect(
+                        Brush.radialGradient(
+                            listOf(Color(0xFFD95999).copy(alpha = 0.14f), Color.Transparent),
+                            center = Offset(size.width * 0.5f, size.height * 0.9f),
+                            radius = 640f,
+                        ),
+                    )
+                },
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -116,54 +148,76 @@ fun HomeScreen(
 
 @Composable
 private fun NewsRow(item: WSNewsItem, onClick: () -> Unit) {
-    val accent = item.categories.firstOrNull()?.let { categoryColor(it) }
-        ?: MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
+    val foilColor = item.categories.firstOrNull()?.let { categoryColor(it) } ?: Color(0xFF9E9E9E)
+    Column(
         Modifier
             .fillMaxWidth()
-            // Row 預設高度是 wrap content，子項目的 fillMaxHeight 沒有邊界可撐，
-            // 加這行讓左側色條能撐到跟內文一樣高（Compose 等高 Row 的標準寫法）
-            .height(IntrinsicSize.Min)
-            .clip(MaterialTheme.shapes.medium)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            .clickable(onClick = onClick),
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                Brush.linearGradient(listOf(Color(0xFF14151F), Color(0xFF0C0D14))),
+            )
+            .drawBehind {
+                // 卡角的全息燙金色塊——這就是「B·全息卡背」跟其他方向的核心差異
+                val ribbon = 96.dp.toPx()
+                withTransform({
+                    translate(size.width, 0f)
+                    rotate(45f, pivot = Offset.Zero)
+                }) {
+                    drawRect(foilColor.copy(alpha = 0.16f), size = androidx.compose.ui.geometry.Size(ribbon, ribbon))
+                }
+            }
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(16.dp),
     ) {
-        // 左側色條標出這則公告的分類，掃視列表時比純文字色塊更容易一眼區分
-        Box(Modifier.width(4.dp).fillMaxHeight().background(accent.copy(alpha = 0.85f)))
-        Column(Modifier.weight(1f).padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                item.categories.forEach { category ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            item.categories.forEach { category ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(end = 8.dp),
+                ) {
+                    // 小菱形「寶石」取代原本的色塊膠囊，呼應卡牌稀有度標記
+                    Box(
+                        Modifier
+                            .size(6.dp)
+                            .rotate(45f)
+                            .background(categoryColor(category), RoundedCornerShape(1.5.dp)),
+                    )
+                    Spacer(Modifier.width(4.dp))
                     Text(
                         category,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = categoryColor(category),
-                        modifier = Modifier
-                            .padding(end = 6.dp)
-                            .background(categoryColor(category).copy(alpha = 0.16f), CircleShape)
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.4.sp,
+                        color = categoryTint(category),
                     )
                 }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    item.date,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.weight(1f))
             Text(
-                item.displayTitle,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                item.date.replace("-", "."),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White.copy(alpha = 0.42f),
             )
         }
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.CenterVertically).padding(end = 12.dp),
+        Spacer(Modifier.height(8.dp))
+        Text(
+            item.displayTitle,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFFF5F5F5),
         )
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.weight(1f))
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 
@@ -268,13 +322,23 @@ private fun NewsDetailDialog(item: WSNewsItem, onDismiss: () -> Unit) {
     }
 }
 
-/** 純粹視覺分類，跟官網分類文字用簡單對照，沒對到的一律灰色 */
+/** 卡角燙金色塊、寶石標記共用的飽和色 */
 private fun categoryColor(category: String): Color = when (category) {
     "商品情報" -> Color(0xFF2196F3)
     "カードリスト" -> Color(0xFF4CAF50)
     "大会", "イベント" -> Color(0xFFFF9800)
     "ルール" -> Color(0xFF9C27B0)
     "デッキレシピ" -> Color(0xFFE91E63)
+    else -> Color(0xFF9E9E9E)
+}
+
+/** 分類文字用的淺色調，飽和色直接當文字色在深底上太刺眼 */
+private fun categoryTint(category: String): Color = when (category) {
+    "商品情報" -> Color(0xFF6DB8FF)
+    "カードリスト" -> Color(0xFF7BDF9E)
+    "大会", "イベント" -> Color(0xFFFFBD6B)
+    "ルール" -> Color(0xFFD9A3FF)
+    "デッキレシピ" -> Color(0xFFFF8FAB)
     else -> Color(0xFF9E9E9E)
 }
 
