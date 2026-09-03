@@ -8,6 +8,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Newspaper
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mark.wsdeck.data.AnnouncementCenter
 import com.mark.wsdeck.data.WSNewsItem
@@ -40,8 +44,10 @@ fun HomeScreen(
     onboarding: OnboardingState,
 ) {
     val ui by newsRepo.ui.collectAsStateWithLifecycle()
-    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
+    // 點公告先看我們整理過的重點，不是直接跳出 App 到瀏覽器——
+    // 有興趣看完整內容的人，詳情頁裡還有官網連結
+    var selectedItem by remember { mutableStateOf<WSNewsItem?>(null) }
 
     LaunchedEffect(Unit) {
         if (ui.items.isEmpty()) newsRepo.refresh()
@@ -91,7 +97,7 @@ fun HomeScreen(
                     }
                 }
                 items(ui.items, key = { it.date + it.titleJP + it.url }) { item ->
-                    NewsRow(item) { uriHandler.openUri(item.url) }
+                    NewsRow(item) { selectedItem = item }
                 }
                 item {
                     TextButton(
@@ -101,6 +107,10 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    selectedItem?.let { item ->
+        NewsDetailDialog(item) { selectedItem = null }
     }
 }
 
@@ -154,6 +164,107 @@ private fun NewsRow(item: WSNewsItem, onClick: () -> Unit) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterVertically).padding(end = 12.dp),
         )
+    }
+}
+
+/** 公告詳情：先讓使用者看重點（規格重點或至少標題／分類／日期），
+ *  有興趣才點下面的按鈕去官網看完整內容——不是點一下就直接跳出 App。 */
+@Composable
+private fun NewsDetailDialog(item: WSNewsItem, onDismiss: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.large)
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(20.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                item.categories.forEach { category ->
+                    Text(
+                        category,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = categoryColor(category),
+                        modifier = Modifier
+                            .padding(end = 6.dp)
+                            .background(categoryColor(category).copy(alpha = 0.16f), CircleShape)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    item.date,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(item.displayTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(16.dp))
+
+            if (item.highlightsZH.isNotEmpty()) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .padding(14.dp),
+                ) {
+                    Text(
+                        "重點整理",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    item.highlightsZH.forEach { line ->
+                        Row(Modifier.padding(vertical = 3.dp)) {
+                            Icon(
+                                Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp).padding(top = 2.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(line, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            } else {
+                // 規則更新、賽事公告這類抓不到規格表的公告，老實說沒有重點可以整理，
+                // 不硬湊內容，直接請使用者去官網看
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .padding(14.dp),
+                ) {
+                    Icon(Icons.Filled.Info, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "這則公告沒有可摘要的規格資訊，詳細內容請至官網查看。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = { uriHandler.openUri(item.url) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null,
+                    modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("前往官網查看完整內容")
+            }
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("關閉") }
+        }
     }
 }
 

@@ -25,6 +25,11 @@ data class WSNewsItem(
     @SerialName("title_zh") val titleZH: String? = null,
     val url: String,
     val source: String = "official",
+    /** 商品公告才有的規格重點（發售日、售價、卡片種類數），從官網商品頁的
+     *  規格表抓來的事實資訊，不是公告全文的翻譯——見 WSDeckBuilder-data 的
+     *  tools/enrich_ws_news.py。空清單代表這則公告沒有結構化規格可抓（規則
+     *  更新、賽事公告等），詳情頁只會顯示標題跟官網連結 */
+    @SerialName("highlights_zh") val highlightsZH: List<String> = emptyList(),
 ) {
     /** 有中文說明就顯示中文，沒有就顯示官方日文原文——不擅自翻譯，只顯示有把握的內容 */
     val displayTitle: String get() = titleZH ?: titleJP
