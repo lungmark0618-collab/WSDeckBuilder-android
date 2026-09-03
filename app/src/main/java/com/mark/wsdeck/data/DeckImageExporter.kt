@@ -61,11 +61,23 @@ object DeckImageExporter {
 
         /** 回傳 null 表示不是本 App 的載荷。吃兩種格式：新的
          *  wsdeck://import?d=... 網址，跟舊版直接掃圖片時可能還留著的純文字
-         *  格式（在 App 內用相簿選圖那條路還是會遇到）。 */
+         *  格式（在 App 內用相簿選圖那條路還是會遇到）。
+         *
+         *  故意不用 android.net.Uri 解析——那是 Android 框架 API，純 JVM 的
+         *  單元測試（testDebugUnitTest，沒套 Robolectric）呼叫它只會拿到
+         *  stub 回傳的空殼，讓這裡的判斷永遠走不進 if 分支、整組測試靜靜
+         *  失敗。這裡的網址格式固定是自己 encode() 出來的，手動字串處理
+         *  就夠可靠，也才能在純 JVM 環境被測到。 */
         fun decode(text: String): Parsed? {
-            val uri = runCatching { android.net.Uri.parse(text) }.getOrNull()
-            if (uri != null && uri.scheme == URL_SCHEME && uri.host == URL_HOST) {
-                val raw = uri.getQueryParameter("d") ?: return null
+            val prefix = "$URL_SCHEME://$URL_HOST?"
+            if (text.startsWith(prefix)) {
+                val raw = text.removePrefix(prefix)
+                    .split("&")
+                    .map { it.split("=", limit = 2) }
+                    .firstOrNull { it.size == 2 && it[0] == "d" }
+                    ?.get(1)
+                    ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull() }
+                    ?: return null
                 return decodeRaw(raw)
             }
             return decodeRaw(text)

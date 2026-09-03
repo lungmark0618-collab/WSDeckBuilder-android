@@ -2,7 +2,6 @@ package com.mark.wsdeck.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -51,6 +50,10 @@ class DeckImageExporterPayloadTest {
             DeckEntryEntity(deckUuid = "d", printingId = "A-001", count = 1),
         )
         val encoded = DeckImageExporter.Payload.encode("順序", entries)
-        assertTrue(encoded.substringAfterLast("|").startsWith("A-001"))
+        val decoded = DeckImageExporter.Payload.decode(encoded)
+        assertEquals(
+            listOf("A-001" to 1, "Z-002" to 1),
+            decoded?.entries,
+        )
     }
 }
