@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,12 +34,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mark.wsdeck.data.AnnouncementCenter
+import com.mark.wsdeck.data.NetworkPolicy
 import com.mark.wsdeck.data.WSNewsItem
 import com.mark.wsdeck.data.WSNewsRepository
 import com.mark.wsdeck.ui.notifications.NotificationBellButton
 import com.mark.wsdeck.ui.onboarding.onboardingAnchor
 import com.mark.wsdeck.data.OnboardingState
 import com.mark.wsdeck.data.OnboardingStep
+import com.mark.wsdeck.ui.shared.PolicyGatedCardImage
 import kotlinx.coroutines.launch
 
 /**
@@ -50,12 +54,20 @@ fun HomeScreen(
     newsRepo: WSNewsRepository,
     announcements: AnnouncementCenter,
     onboarding: OnboardingState,
+    networkPolicy: NetworkPolicy,
 ) {
     val ui by newsRepo.ui.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     // 點公告先看我們整理過的重點，不是直接跳出 App 到瀏覽器——
     // 有興趣看完整內容的人，詳情頁裡還有官網連結
     var selectedItem by remember { mutableStateOf<WSNewsItem?>(null) }
+    // 輪播只挑有配圖、跟商品/卡表有關的公告——參考官網首頁「最新商品」跑馬燈的
+    // 做法，規則更新、賽事這類沒有視覺重點的公告不適合放大圖展示
+    val heroItems = remember(ui.items) {
+        ui.items.filter {
+            it.imageURL != null && ("商品情報" in it.categories || "カードリスト" in it.categories)
+        }.take(6)
+    }
 
     LaunchedEffect(Unit) {
         if (ui.items.isEmpty()) newsRepo.refresh()
@@ -118,6 +130,11 @@ fun HomeScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                if (heroItems.isNotEmpty()) {
+                    item {
+                        HeroCarousel(heroItems, networkPolicy) { selectedItem = it }
+                    }
+                }
                 ui.errorMessage?.let { message ->
                     item {
                         Text(
@@ -216,6 +233,103 @@ private fun NewsRow(item: WSNewsItem, onClick: () -> Unit) {
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.55f),
                 modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+/** 首頁最上方的大圖輪播——參考官網首頁「最新商品」跑馬燈：整張商品視覺圖
+ *  滿版顯示、左右滑動切換、底部疊標題跟日期，比純文字列表更能一眼抓住
+ *  「現在有什麼新東西」 */
+@Composable
+private fun HeroCarousel(items: List<WSNewsItem>, networkPolicy: NetworkPolicy, onSelect: (WSNewsItem) -> Unit) {
+    val pagerState = rememberPagerState(pageCount = { items.size })
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        HorizontalPager(state = pagerState) { page ->
+            val item = items[page]
+            HeroSlide(item, categoryColor(item.categories.firstOrNull() ?: ""), networkPolicy) {
+                onSelect(item)
+            }
+        }
+        if (items.size > 1) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            ) {
+                items.indices.forEach { i ->
+                    val selected = i == pagerState.currentPage
+                    Box(
+                        Modifier
+                            .size(width = if (selected) 16.dp else 6.dp, height = 6.dp)
+                            .clip(CircleShape)
+                            .background(if (selected) Color.White else Color.White.copy(alpha = 0.28f)),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroSlide(item: WSNewsItem, accent: Color, networkPolicy: NetworkPolicy, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(224.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick),
+    ) {
+        item.imageURL?.let { url ->
+            PolicyGatedCardImage(
+                url = url,
+                contentDescription = item.displayTitle,
+                networkPolicy = networkPolicy,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.92f)),
+                    ),
+                ),
+        )
+        Column(
+            Modifier.align(Alignment.BottomStart).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(6.dp)
+                        .rotate(45f)
+                        .background(accent, RoundedCornerShape(1.5.dp)),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    item.categories.firstOrNull() ?: "",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.4.sp,
+                    color = Color.White.copy(alpha = 0.85f),
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    item.date.replace("-", "."),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.85f),
+                )
+            }
+            Text(
+                item.displayTitle,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = Color.White,
+                maxLines = 2,
             )
         }
     }

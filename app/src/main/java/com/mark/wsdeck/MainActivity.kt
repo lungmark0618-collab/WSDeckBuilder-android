@@ -300,7 +300,7 @@ private fun MainScaffold(
             modifier = Modifier.padding(padding),
         ) {
             composable(Tab.Home.route) {
-                com.mark.wsdeck.ui.home.HomeScreen(newsRepo, announcements, onboarding)
+                com.mark.wsdeck.ui.home.HomeScreen(newsRepo, announcements, onboarding, networkPolicy)
             }
             composable(Tab.Catalog.route) {
                 CatalogScreen(cardRepo, deckRepo, collectionRepo, announcements, appearance, networkPolicy, onboarding, favorites)
