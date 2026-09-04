@@ -1,6 +1,8 @@
 package com.mark.wsdeck.data
 
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
@@ -93,4 +95,12 @@ interface DeckDao {
 abstract class AppDatabase : RoomDatabase() {
     abstract fun deckDao(): DeckDao
     abstract fun collectionDao(): CollectionDao
+}
+
+/** 加入拖曳排序記錄欄位，用真的 migration 保留使用者既有牌組——
+ *  不能像 1→2 那次直接讓 fallbackToDestructiveMigration 整個清掉重建 */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE decks ADD COLUMN cardOrder TEXT NOT NULL DEFAULT ''")
+    }
 }

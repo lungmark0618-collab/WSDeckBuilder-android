@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
 class DeckRepository(context: Context) {
     private val db = Room.databaseBuilder(
         context.applicationContext, AppDatabase::class.java, "wsdeck.db",
-    ).fallbackToDestructiveMigration(true).build()
+    ).addMigrations(MIGRATION_2_3).fallbackToDestructiveMigration(true).build()
     private val dao = db.deckDao()
 
     fun observeDecks(): Flow<List<DeckWithEntries>> = dao.observeDecks()

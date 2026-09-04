@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 class CollectionRepository(context: Context) {
     private val db = Room.databaseBuilder(
         context.applicationContext, AppDatabase::class.java, "wsdeck.db",
-    ).fallbackToDestructiveMigration(true).build()
+    ).addMigrations(MIGRATION_2_3).fallbackToDestructiveMigration(true).build()
     private val dao = db.collectionDao()
 
     fun observeAll(): Flow<List<CollectionEntryEntity>> = dao.observeAll()
