@@ -46,6 +46,11 @@ enum class OnboardingStep(val title: String, val body: String, val tab: Onboardi
         "點右下角的＋，建立你的第一副牌組。",
         OnboardingTab.DECKS,
     ),
+    PIN_DECKS(
+        "釘選常用牌組",
+        "在牌組上向右滑，點「釘選到首頁」，常用的牌組就會出現在首頁最上方，不用每次都切分頁找。",
+        OnboardingTab.DECKS,
+    ),
     VIEW_CARD(
         "查看卡片",
         "回到圖鑑，點一部作品、再點一張卡，看看完整能力文字翻譯。",

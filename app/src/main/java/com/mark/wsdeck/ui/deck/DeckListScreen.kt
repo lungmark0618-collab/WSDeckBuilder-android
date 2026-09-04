@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -181,12 +182,19 @@ fun DeckListScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(decks, key = { it.deck.uuid }) { d ->
+                itemsIndexed(decks, key = { _, d -> d.deck.uuid }) { index, d ->
                     DeckRow(
                         d, cardRepo, networkPolicy, onClick = { onOpen(d.deck.uuid) },
                         onDelete = { pendingDelete = d },
                         isPinned = pinnedDecks.isPinned(d.deck.uuid),
-                        onTogglePin = { pinnedDecks.toggle(d.deck.uuid) },
+                        onTogglePin = {
+                            pinnedDecks.toggle(d.deck.uuid)
+                            onboarding.notify(OnboardingStep.PIN_DECKS)
+                        },
+                        // 教學光圈只該指第一列，不然每一列都圈起來很亂
+                        pinAnchor = if (index == 0) {
+                            Modifier.onboardingAnchor(OnboardingStep.PIN_DECKS, onboarding)
+                        } else Modifier,
                     )
                 }
             }
@@ -288,6 +296,7 @@ private fun DeckRow(
     onDelete: () -> Unit,
     isPinned: Boolean,
     onTogglePin: () -> Unit,
+    pinAnchor: Modifier = Modifier,
 ) {
     // 使用者指定的封面優先，否則自動取等級最高的一張（可在牌組詳情頁「選擇封面」調整）
     val cover = remember(d) { d.coverPrinting(cardRepo) }
@@ -334,7 +343,7 @@ private fun DeckRow(
                 )
             }
             // 常用牌組手動釘選到首頁，不是自動依使用頻率排序——「順手」由使用者自己決定
-            IconButton(onClick = onTogglePin) {
+            IconButton(onClick = onTogglePin, modifier = pinAnchor) {
                 Icon(
                     if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                     contentDescription = if (isPinned) "取消釘選首頁" else "釘選到首頁",
