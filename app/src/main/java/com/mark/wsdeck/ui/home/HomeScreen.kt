@@ -469,16 +469,23 @@ private fun NewsDetailDialog(item: WSNewsItem, networkPolicy: NetworkPolicy, onD
                 .padding(20.dp),
         ) {
             item.bestImageURL?.let { url ->
-                PolicyGatedCardImage(
-                    url = url,
-                    contentDescription = item.displayTitle,
-                    networkPolicy = networkPolicy,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
+                // 商品包裝圖官網來源正方形、長方形都有，用 Fit 完整顯示不裁切——
+                // 裁切填滿常常把包裝上的字或圖案切掉一半，使用者反映「圖片位置跑掉」
+                Box(
+                    Modifier
                         .fillMaxWidth()
                         .height(160.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                )
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                ) {
+                    PolicyGatedCardImage(
+                        url = url,
+                        contentDescription = item.displayTitle,
+                        networkPolicy = networkPolicy,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
                 Spacer(Modifier.height(14.dp))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
