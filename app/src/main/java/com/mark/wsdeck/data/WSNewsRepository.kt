@@ -32,9 +32,14 @@ data class WSNewsItem(
     @SerialName("highlights_zh") val highlightsZH: List<String> = emptyList(),
     /** 首頁輪播用的縮圖，不是每則都有——沒配圖的公告就不會出現在輪播裡 */
     @SerialName("image_url") val imageURL: String? = null,
+    /** 商品頁自己的大圖（包裝盒圖），比列表縮圖更清楚——只有商品類公告才有，
+     *  詳情頁優先用這張，沒有的話退回用列表縮圖 */
+    @SerialName("detail_image_url") val detailImageURL: String? = null,
 ) {
     /** 有中文說明就顯示中文，沒有就顯示官方日文原文——不擅自翻譯，只顯示有把握的內容 */
     val displayTitle: String get() = titleZH ?: titleJP
+    /** 詳情頁該顯示的圖：優先用商品頁大圖，沒有就退回列表縮圖 */
+    val bestImageURL: String? get() = detailImageURL ?: imageURL
 }
 
 @Serializable

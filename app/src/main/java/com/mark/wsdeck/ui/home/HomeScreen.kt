@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -187,7 +188,7 @@ fun HomeScreen(
     }
 
     selectedItem?.let { item ->
-        NewsDetailDialog(item) { selectedItem = null }
+        NewsDetailDialog(item, networkPolicy) { selectedItem = null }
     }
 }
 
@@ -457,7 +458,7 @@ private fun HeroSlide(item: WSNewsItem, accent: Color, networkPolicy: NetworkPol
 /** 公告詳情：先讓使用者看重點（規格重點或至少標題／分類／日期），
  *  有興趣才點下面的按鈕去官網看完整內容——不是點一下就直接跳出 App。 */
 @Composable
-private fun NewsDetailDialog(item: WSNewsItem, onDismiss: () -> Unit) {
+private fun NewsDetailDialog(item: WSNewsItem, networkPolicy: NetworkPolicy, onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -467,6 +468,19 @@ private fun NewsDetailDialog(item: WSNewsItem, onDismiss: () -> Unit) {
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(20.dp),
         ) {
+            item.bestImageURL?.let { url ->
+                PolicyGatedCardImage(
+                    url = url,
+                    contentDescription = item.displayTitle,
+                    networkPolicy = networkPolicy,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                )
+                Spacer(Modifier.height(14.dp))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 item.categories.forEach { category ->
                     Text(
