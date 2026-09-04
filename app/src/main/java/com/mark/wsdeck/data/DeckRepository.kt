@@ -31,6 +31,12 @@ class DeckRepository(context: Context) {
                                  updatedAt = System.currentTimeMillis()))
     }
 
+    /** 拖曳排序後寫回完整順序 */
+    suspend fun setCardOrder(deck: DeckEntity, ids: List<String>) {
+        dao.updateDeck(deck.copy(cardOrder = ids.joinToString(","),
+                                 updatedAt = System.currentTimeMillis()))
+    }
+
     /**
      * 調整某刷版張數；歸零自動移除該筆（對應 iOS Deck.adjust，§4.4.2）。
      * touch=true 才更新 updatedAt——出圖、統計這類只讀操作不該讓「最近修改」跳動。
@@ -59,6 +65,14 @@ class DeckRepository(context: Context) {
     private suspend fun touchDeck(deckUuid: String) {
         dao.touch(deckUuid, System.currentTimeMillis())
     }
+}
+
+/** 依使用者拖曳過的順序排出卡片 id；沒排過的卡（新加的、還沒拖過的）
+ *  照卡號自然排序，接在已排序的卡後面，對應 iOS 的 Deck.customOrder(sorting:) */
+fun DeckEntity.customOrder(ids: List<String>): List<String> {
+    val order = cardOrder.split(",").filter { it.isNotBlank() }
+    val index = order.withIndex().associate { (i, id) -> id to i }
+    return ids.sortedWith(compareBy<String> { index[it] ?: Int.MAX_VALUE }.thenBy { it })
 }
 
 /** 邏輯卡片 + 牌組中的總張數（跨刷版），對應 iOS 的 DeckExporter.CardCount */

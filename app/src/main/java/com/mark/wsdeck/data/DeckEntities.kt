@@ -17,6 +17,9 @@ data class DeckEntity(
     val note: String = "",
     /** 封面卡的刷版卡號；空字串表示自動取牌組中等級最高的一張 */
     val coverPrintingId: String = "",
+    /** 使用者在卡表拖曳排序過的卡片 id（不分刷版），逗號分隔，保留順序。
+     *  沒被拖曳過的卡不在這裡，顯示時自然照卡號排序接在後面 */
+    val cardOrder: String = "",
 )
 
 /** 一筆 = 某張卡的某個刷版放了幾張 */
@@ -85,7 +88,7 @@ interface DeckDao {
 
 @Database(
     entities = [DeckEntity::class, DeckEntryEntity::class, CollectionEntryEntity::class],
-    version = 2,
+    version = 3,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun deckDao(): DeckDao

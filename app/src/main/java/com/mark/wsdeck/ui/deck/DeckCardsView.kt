@@ -2,6 +2,7 @@ package com.mark.wsdeck.ui.deck
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -12,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Remove
@@ -21,8 +23,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.mark.wsdeck.data.*
 import com.mark.wsdeck.ui.shared.PolicyGatedCardImage
 
@@ -38,6 +45,8 @@ fun DeckCardsTab(
     usesGrid: Boolean,
     networkPolicy: NetworkPolicy,
     editable: Boolean = true,
+    isReordering: Boolean = false,
+    onReorderSection: (List<CardCount>) -> Unit = {},
     onAdjust: (printingId: String, delta: Int) -> Unit,
 ) {
     val sections = remember(items) { buildLevelSections(items) }
@@ -51,7 +60,7 @@ fun DeckCardsTab(
     if (usesGrid) {
         DeckCardGrid(deck, sections, editable, networkPolicy, onAdjust)
     } else {
-        DeckCardList(deck, sections, items, editable, networkPolicy, onAdjust)
+        DeckCardList(deck, sections, items, editable, networkPolicy, isReordering, onReorderSection, onAdjust)
     }
 }
 
@@ -77,22 +86,137 @@ private fun DeckCardList(
     allItems: List<CardCount>,
     editable: Boolean,
     networkPolicy: NetworkPolicy,
+    isReordering: Boolean = false,
+    onReorderSection: (List<CardCount>) -> Unit = {},
     onAdjust: (String, Int) -> Unit,
 ) {
     val entryByPrinting = remember(deck.entries) { deck.entries.associate { it.printingId to it.count } }
     LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
         sections.forEach { section ->
             item(key = "list-header-${section.title}") { SectionHeader(section) }
-            items(section.items, key = { "row-${it.card.id}" }) { item ->
-                DeckEntryRow(
-                    item = item,
-                    entryByPrinting = entryByPrinting,
-                    totalForName = DeckValidator.nameCount(item.card, allItems),
-                    editable = editable,
-                    networkPolicy = networkPolicy,
-                    onAdjust = onAdjust,
-                )
+            if (isReordering) {
+                // 拖曳排序時改用一般 Column（非 lazy）才量得到每列實際位置，
+                // 一副牌最多 50 張，不用 lazy 回收也不會有效能問題
+                item(key = "list-reorder-${section.title}") {
+                    ReorderableCardColumn(
+                        items = section.items,
+                        entryByPrinting = entryByPrinting,
+                        networkPolicy = networkPolicy,
+                        onReordered = onReorderSection,
+                    )
+                }
+            } else {
+                items(section.items, key = { "row-${it.card.id}" }) { item ->
+                    DeckEntryRow(
+                        item = item,
+                        entryByPrinting = entryByPrinting,
+                        totalForName = DeckValidator.nameCount(item.card, allItems),
+                        editable = editable,
+                        networkPolicy = networkPolicy,
+                        onAdjust = onAdjust,
+                    )
+                }
             }
+        }
+    }
+}
+
+/**
+ * 拖曳排序：長按拿起一列，拖到想要的位置放開。用 pointerInput 手動偵測拖曳
+ * 手勢，量每列實際位置（onGloballyPositioned）決定該跟哪一列交換，
+ * 不依賴 Compose 目前還沒有的原生 reorder API。
+ */
+@Composable
+private fun ReorderableCardColumn(
+    items: List<CardCount>,
+    entryByPrinting: Map<String, Int>,
+    networkPolicy: NetworkPolicy,
+    onReordered: (List<CardCount>) -> Unit,
+) {
+    var order by remember(items) { mutableStateOf(items) }
+    var draggingId by remember { mutableStateOf<String?>(null) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    val positions = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
+
+    Column {
+        order.forEach { item ->
+            val cardId = item.card.id
+            val isDragging = draggingId == cardId
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coords ->
+                        positions[cardId] = coords.positionInParent().y to coords.size.height.toFloat()
+                    }
+                    .graphicsLayer { translationY = if (isDragging) dragOffsetY else 0f }
+                    .zIndex(if (isDragging) 1f else 0f)
+                    .background(
+                        if (isDragging) MaterialTheme.colorScheme.surfaceVariant
+                        else Color.Transparent,
+                    )
+                    .pointerInput(cardId) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { draggingId = cardId; dragOffsetY = 0f },
+                            onDragEnd = {
+                                draggingId = null
+                                dragOffsetY = 0f
+                                onReordered(order)
+                            },
+                            onDragCancel = { draggingId = null; dragOffsetY = 0f },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                dragOffsetY += dragAmount.y
+                                val (top, _) = positions[cardId] ?: return@detectDragGesturesAfterLongPress
+                                val height = positions[cardId]?.second ?: 0f
+                                val draggedCenter = top + dragOffsetY + height / 2f
+                                val currentIndex = order.indexOfFirst { it.card.id == cardId }
+                                val targetIndex = order.indexOfFirst { other ->
+                                    val (otherTop, otherHeight) = positions[other.card.id] ?: return@indexOfFirst false
+                                    draggedCenter in otherTop..(otherTop + otherHeight)
+                                }
+                                if (targetIndex != -1 && targetIndex != currentIndex) {
+                                    val oldTop = positions[cardId]?.first ?: top
+                                    val moved = order.toMutableList()
+                                    val el = moved.removeAt(currentIndex)
+                                    moved.add(targetIndex, el)
+                                    order = moved
+                                    val newTop = positions[cardId]?.first ?: oldTop
+                                    dragOffsetY += oldTop - newTop
+                                }
+                            },
+                        )
+                    }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.DragHandle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                val displayPrinting = item.card.printings.firstOrNull { (entryByPrinting[it.id] ?: 0) > 0 }
+                    ?: item.card.defaultPrinting
+                PolicyGatedCardImage(
+                    url = displayPrinting.imageURL,
+                    contentDescription = item.card.nameZH,
+                    networkPolicy = networkPolicy,
+                    modifier = Modifier
+                        .width(36.dp)
+                        .aspectRatio(63f / 88f)
+                        .clip(RoundedCornerShape(3.dp)),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    item.card.nameZH,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("×${item.count}", style = MaterialTheme.typography.titleMedium)
+            }
+            HorizontalDivider()
         }
     }
 }

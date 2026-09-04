@@ -51,7 +51,9 @@ private fun SummaryRow(items: List<CardCount>) {
     val nonClimax = items.filter { it.card.cardType != CardType.CLIMAX }
     val totalNonClimax = nonClimax.sumOf { it.count }
     val totalCost = nonClimax.sumOf { (it.card.cost ?: 0) * it.count }
-    val totalSoul = items.sumOf { (it.card.soul ?: 0) * it.count }
+    // 「總魂刻數」數的是有魂刻標誌的張數（卡牌右上角有沒有那個圖示），
+    // 不是把每張的魂刻數值加總——使用者要看的是機率相關的張數，不是強度
+    val soulCount = items.filter { (it.card.soul ?: 0) >= 1 }.sumOf { it.count }
     val avgCost = if (totalNonClimax > 0) "%.2f".format(totalCost.toDouble() / totalNonClimax) else "-"
     val avgPower = if (totalNonClimax > 0) {
         (nonClimax.sumOf { (it.card.power ?: 0) * it.count } / totalNonClimax).toString()
@@ -60,8 +62,8 @@ private fun SummaryRow(items: List<CardCount>) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         StatTile("總張數", "${items.sumOf { it.count }}", Modifier.weight(1f))
         StatTile("平均費用", avgCost, Modifier.weight(1f))
-        StatTile("平均攻擊", avgPower, Modifier.weight(1f))
-        StatTile("總魂傷", "$totalSoul", Modifier.weight(1f))
+        StatTile("平均攻擊力", avgPower, Modifier.weight(1f))
+        StatTile("總魂刻數", "$soulCount", Modifier.weight(1f))
     }
 }
 
