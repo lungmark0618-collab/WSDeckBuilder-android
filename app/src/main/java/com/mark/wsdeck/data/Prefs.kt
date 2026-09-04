@@ -129,6 +129,14 @@ class Prefs(context: Context) {
         get() = prefs.getStringSet(KEY_FAVORITE_TITLE_CODES, emptySet()) ?: emptySet()
         set(value) = prefs.edit().putStringSet(KEY_FAVORITE_TITLE_CODES, value).apply()
 
+    // MARK: - 常用牌組（對應 iOS 的 PinnedDecksStore）
+    // 用逗號分隔的字串而非 StringSet 存——釘選順序要保留，Set 不保證順序
+
+    var pinnedDeckUuids: List<String>
+        get() = prefs.getString(KEY_PINNED_DECK_UUIDS, "")
+            ?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+        set(value) = prefs.edit().putString(KEY_PINNED_DECK_UUIDS, value.joinToString(",")).apply()
+
     companion object {
         private const val KEY_ACTIVE_DECK = "active_deck_uuid"
         private const val KEY_DECK_USES_GRID = "deck_uses_grid"
@@ -150,5 +158,6 @@ class Prefs(context: Context) {
         private const val KEY_CELLULAR_STATS_MONTH = "cellular_stats_month"
         private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
         private const val KEY_FAVORITE_TITLE_CODES = "favorite_title_codes"
+        private const val KEY_PINNED_DECK_UUIDS = "pinned_deck_uuids"
     }
 }

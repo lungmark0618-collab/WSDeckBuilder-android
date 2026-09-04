@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Newspaper
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,9 +36,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mark.wsdeck.data.AnnouncementCenter
+import com.mark.wsdeck.data.CardRepository
+import com.mark.wsdeck.data.CardType
+import com.mark.wsdeck.data.DeckRepository
+import com.mark.wsdeck.data.DeckWithEntries
 import com.mark.wsdeck.data.NetworkPolicy
+import com.mark.wsdeck.data.PinnedDecksStore
 import com.mark.wsdeck.data.WSNewsItem
 import com.mark.wsdeck.data.WSNewsRepository
+import com.mark.wsdeck.data.coverPrinting
 import com.mark.wsdeck.ui.notifications.NotificationBellButton
 import com.mark.wsdeck.ui.onboarding.onboardingAnchor
 import com.mark.wsdeck.data.OnboardingState
@@ -55,12 +63,24 @@ fun HomeScreen(
     announcements: AnnouncementCenter,
     onboarding: OnboardingState,
     networkPolicy: NetworkPolicy,
+    cardRepo: CardRepository,
+    deckRepo: DeckRepository,
+    pinnedDecks: PinnedDecksStore,
+    onOpenDeck: (String) -> Unit,
 ) {
     val ui by newsRepo.ui.collectAsStateWithLifecycle()
+    val allDecks by deckRepo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
     // 點公告先看我們整理過的重點，不是直接跳出 App 到瀏覽器——
     // 有興趣看完整內容的人，詳情頁裡還有官網連結
     var selectedItem by remember { mutableStateOf<WSNewsItem?>(null) }
+    // 依釘選順序排出實際存在的牌組——牌組被刪掉但清理沒跑到的殘影
+    // （理論上不會發生，DeckListScreen 刪牌組時已經呼叫 pinnedDecks.remove，
+    // 這裡只是多一層防呆）就自然濾掉，不會顯示空卡片
+    val pinnedDecksOrdered = remember(allDecks, pinnedDecks.uuids) {
+        val byUuid = allDecks.associateBy { it.deck.uuid }
+        pinnedDecks.uuids.mapNotNull { byUuid[it] }
+    }
     // 輪播只挑有配圖、跟商品/卡表有關的公告——參考官網首頁「最新商品」跑馬燈的
     // 做法，規則更新、賽事這類沒有視覺重點的公告不適合放大圖展示
     val heroItems = remember(ui.items) {
@@ -130,6 +150,11 @@ fun HomeScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                if (pinnedDecksOrdered.isNotEmpty()) {
+                    item {
+                        PinnedDecksRow(pinnedDecksOrdered, cardRepo, networkPolicy, onOpenDeck)
+                    }
+                }
                 if (heroItems.isNotEmpty()) {
                     item {
                         HeroCarousel(
@@ -236,6 +261,92 @@ private fun NewsRow(item: WSNewsItem, onClick: () -> Unit) {
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.55f),
                 modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+/** 常用牌組快速列——使用者在「牌組」分頁點釘選圖示，最想順手開的幾副牌組
+ *  就不用再多切一次分頁、多找一次。放在輪播上面，因為這是「我自己的東西」，
+ *  每次開 App 大概都想先看一眼，比官網公告更優先。 */
+@Composable
+private fun PinnedDecksRow(
+    decks: List<DeckWithEntries>,
+    cardRepo: CardRepository,
+    networkPolicy: NetworkPolicy,
+    onOpen: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "常用牌組",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color.White.copy(alpha = 0.7f),
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(decks, key = { it.deck.uuid }) { d ->
+                PinnedDeckCard(d, cardRepo, networkPolicy) { onOpen(d.deck.uuid) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinnedDeckCard(
+    d: DeckWithEntries,
+    cardRepo: CardRepository,
+    networkPolicy: NetworkPolicy,
+    onClick: () -> Unit,
+) {
+    val cover = remember(d) { d.coverPrinting(cardRepo) }
+    val isClimax = remember(cover) {
+        cover?.let { p -> cardRepo.snapshot.cardById[p.id]?.cardType == CardType.CLIMAX } ?: false
+    }
+    Row(
+        Modifier
+            .width(180.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF1C1C1F))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (cover != null) {
+            PolicyGatedCardImage(
+                url = cover.imageURL,
+                contentDescription = null,
+                networkPolicy = networkPolicy,
+                modifier = Modifier
+                    .width(if (isClimax) 60.dp else 42.dp)
+                    .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)
+                    .clip(RoundedCornerShape(6.dp)),
+            )
+        } else {
+            Box(
+                Modifier
+                    .width(42.dp)
+                    .aspectRatio(63f / 88f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.White.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Style, contentDescription = null, tint = Color.White.copy(alpha = 0.4f))
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(
+                d.deck.name,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+            )
+            Text(
+                "${d.totalCount} 張",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.55f),
             )
         }
     }

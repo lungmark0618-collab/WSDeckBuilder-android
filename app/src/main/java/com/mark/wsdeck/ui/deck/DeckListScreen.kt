@@ -15,7 +15,9 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PostAdd
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +36,7 @@ import com.mark.wsdeck.data.DeckWithEntries
 import com.mark.wsdeck.data.NetworkPolicy
 import com.mark.wsdeck.data.OnboardingState
 import com.mark.wsdeck.data.OnboardingStep
+import com.mark.wsdeck.data.PinnedDecksStore
 import com.mark.wsdeck.data.Prefs
 import com.mark.wsdeck.data.coverPrinting
 import com.mark.wsdeck.ui.onboarding.onboardingAnchor
@@ -48,6 +51,7 @@ fun DeckListScreen(
     repo: DeckRepository,
     networkPolicy: NetworkPolicy,
     onboarding: OnboardingState,
+    pinnedDecks: PinnedDecksStore,
     onOpen: (String) -> Unit,
 ) {
     val decks by repo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -178,8 +182,12 @@ fun DeckListScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(decks, key = { it.deck.uuid }) { d ->
-                    DeckRow(d, cardRepo, networkPolicy, onClick = { onOpen(d.deck.uuid) },
-                        onDelete = { pendingDelete = d })
+                    DeckRow(
+                        d, cardRepo, networkPolicy, onClick = { onOpen(d.deck.uuid) },
+                        onDelete = { pendingDelete = d },
+                        isPinned = pinnedDecks.isPinned(d.deck.uuid),
+                        onTogglePin = { pinnedDecks.toggle(d.deck.uuid) },
+                    )
                 }
             }
         }
@@ -206,6 +214,7 @@ fun DeckListScreen(
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch { repo.deleteDeck(d.deck.uuid) }
+                    pinnedDecks.remove(d.deck.uuid)
                     pendingDelete = null
                 }) { Text("刪除", color = MaterialTheme.colorScheme.error) }
             },
@@ -277,6 +286,8 @@ private fun DeckRow(
     networkPolicy: NetworkPolicy,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    isPinned: Boolean,
+    onTogglePin: () -> Unit,
 ) {
     // 使用者指定的封面優先，否則自動取等級最高的一張（可在牌組詳情頁「選擇封面」調整）
     val cover = remember(d) { d.coverPrinting(cardRepo) }
@@ -319,6 +330,15 @@ private fun DeckRow(
                     "${d.totalCount}/50",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (d.totalCount == 50) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            // 常用牌組手動釘選到首頁，不是自動依使用頻率排序——「順手」由使用者自己決定
+            IconButton(onClick = onTogglePin) {
+                Icon(
+                    if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                    contentDescription = if (isPinned) "取消釘選首頁" else "釘選到首頁",
+                    tint = if (isPinned) MaterialTheme.colorScheme.primary
                            else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
