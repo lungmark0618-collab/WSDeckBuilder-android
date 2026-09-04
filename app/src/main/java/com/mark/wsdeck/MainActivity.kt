@@ -30,6 +30,7 @@ import com.mark.wsdeck.data.DeckImageExporter
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.data.FavoriteTitlesStore
 import com.mark.wsdeck.data.PinnedDecksStore
+import com.mark.wsdeck.data.NewsCategoryFilterStore
 import com.mark.wsdeck.data.NetworkPolicy
 import com.mark.wsdeck.data.OnboardingState
 import com.mark.wsdeck.data.OnboardingTab
@@ -67,6 +68,7 @@ class MainActivity : ComponentActivity() {
         val onboarding = OnboardingState(applicationContext)
         val favorites = FavoriteTitlesStore(applicationContext)
         val pinnedDecks = PinnedDecksStore(applicationContext)
+        val newsCategoryFilter = NewsCategoryFilterStore(applicationContext)
         val newsRepo = WSNewsRepository(applicationContext)
         val waveNameRepo = WaveNameRepository(applicationContext)
         setContent {
@@ -74,7 +76,7 @@ class MainActivity : ComponentActivity() {
             AppTheme(appearanceUi) {
                 AppRoot(
                     cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements,
-                    appearance, networkPolicy, onboarding, favorites, pinnedDecks, newsRepo, waveNameRepo,
+                    appearance, networkPolicy, onboarding, favorites, pinnedDecks, newsCategoryFilter, newsRepo, waveNameRepo,
                     deepLinkUri = pendingDeepLink,
                     onDeepLinkConsumed = { pendingDeepLink = null },
                 )
@@ -115,6 +117,7 @@ private fun AppRoot(
     onboarding: OnboardingState,
     favorites: FavoriteTitlesStore,
     pinnedDecks: PinnedDecksStore,
+    newsCategoryFilter: NewsCategoryFilterStore,
     newsRepo: WSNewsRepository,
     waveNameRepo: WaveNameRepository,
     deepLinkUri: android.net.Uri? = null,
@@ -171,7 +174,7 @@ private fun AppRoot(
         false -> Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
             Text(cardRepo.loadError ?: "資料載入失敗")
         }
-        true -> MainScaffold(cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding, favorites, pinnedDecks, newsRepo)
+        true -> MainScaffold(cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding, favorites, pinnedDecks, newsCategoryFilter, newsRepo)
     }
 
     val appUpdateState by appUpdater.state.collectAsStateWithLifecycle()
@@ -254,6 +257,7 @@ private fun MainScaffold(
     onboarding: OnboardingState,
     favorites: FavoriteTitlesStore,
     pinnedDecks: PinnedDecksStore,
+    newsCategoryFilter: NewsCategoryFilterStore,
     newsRepo: WSNewsRepository,
 ) {
     val navController = rememberNavController()
@@ -302,7 +306,7 @@ private fun MainScaffold(
             modifier = Modifier.padding(padding),
         ) {
             composable(Tab.Home.route) {
-                com.mark.wsdeck.ui.home.HomeScreen(newsRepo, announcements, onboarding, networkPolicy, cardRepo, deckRepo, pinnedDecks) { uuid ->
+                com.mark.wsdeck.ui.home.HomeScreen(newsRepo, announcements, onboarding, networkPolicy, cardRepo, deckRepo, pinnedDecks, newsCategoryFilter) { uuid ->
                     navController.navigate("deck/$uuid")
                 }
             }

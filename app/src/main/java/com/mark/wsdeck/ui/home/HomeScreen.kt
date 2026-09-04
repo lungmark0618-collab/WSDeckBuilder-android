@@ -14,7 +14,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Newspaper
 import androidx.compose.material.icons.filled.Style
@@ -42,6 +45,8 @@ import com.mark.wsdeck.data.CardType
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.data.DeckWithEntries
 import com.mark.wsdeck.data.NetworkPolicy
+import com.mark.wsdeck.data.NewsCategory
+import com.mark.wsdeck.data.NewsCategoryFilterStore
 import com.mark.wsdeck.data.PinnedDecksStore
 import com.mark.wsdeck.data.WSNewsItem
 import com.mark.wsdeck.data.WSNewsRepository
@@ -67,6 +72,7 @@ fun HomeScreen(
     cardRepo: CardRepository,
     deckRepo: DeckRepository,
     pinnedDecks: PinnedDecksStore,
+    newsCategoryFilter: NewsCategoryFilterStore,
     onOpenDeck: (String) -> Unit,
 ) {
     val ui by newsRepo.ui.collectAsStateWithLifecycle()
@@ -75,6 +81,7 @@ fun HomeScreen(
     // 點公告先看我們整理過的重點，不是直接跳出 App 到瀏覽器——
     // 有興趣看完整內容的人，詳情頁裡還有官網連結
     var selectedItem by remember { mutableStateOf<WSNewsItem?>(null) }
+    var showingCategoryFilter by remember { mutableStateOf(false) }
     // 依釘選順序排出實際存在的牌組——牌組被刪掉但清理沒跑到的殘影
     // （理論上不會發生，DeckListScreen 刪牌組時已經呼叫 pinnedDecks.remove，
     // 這裡只是多一層防呆）就自然濾掉，不會顯示空卡片
@@ -82,10 +89,15 @@ fun HomeScreen(
         val byUuid = allDecks.associateBy { it.deck.uuid }
         pinnedDecks.uuids.mapNotNull { byUuid[it] }
     }
+    // 套用使用者的分類篩選——輪播跟列表共用同一份結果，免得使用者把某分類
+    // 關掉了，卻還在輪播裡看到
+    val filteredItems = remember(ui.items, newsCategoryFilter.hidden) {
+        ui.items.filter { newsCategoryFilter.isVisible(it) }
+    }
     // 輪播只挑有配圖、跟商品/卡表有關的公告——參考官網首頁「最新商品」跑馬燈的
     // 做法，規則更新、賽事這類沒有視覺重點的公告不適合放大圖展示
-    val heroItems = remember(ui.items) {
-        ui.items.filter {
+    val heroItems = remember(filteredItems) {
+        filteredItems.filter {
             it.imageURL != null && ("商品情報" in it.categories || "カードリスト" in it.categories)
         }.take(6)
     }
@@ -99,6 +111,12 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("首頁") },
                 actions = {
+                    IconButton(onClick = { showingCategoryFilter = true }) {
+                        Icon(
+                            if (newsCategoryFilter.hidden.isEmpty()) Icons.Filled.FilterList else Icons.Filled.FilterAlt,
+                            contentDescription = "篩選首頁公告",
+                        )
+                    }
                     NotificationBellButton(
                         announcements,
                         modifier = Modifier.onboardingAnchor(OnboardingStep.NOTIFICATIONS, onboarding),
@@ -174,7 +192,7 @@ fun HomeScreen(
                         )
                     }
                 }
-                items(ui.items, key = { it.date + it.titleJP + it.url }) { item ->
+                items(filteredItems, key = { it.date + it.titleJP + it.url }) { item ->
                     NewsRow(item) { selectedItem = item }
                 }
                 item {
@@ -190,11 +208,58 @@ fun HomeScreen(
     selectedItem?.let { item ->
         NewsDetailDialog(item, networkPolicy) { selectedItem = null }
     }
+    if (showingCategoryFilter) {
+        NewsCategoryFilterDialog(newsCategoryFilter) { showingCategoryFilter = false }
+    }
+}
+
+/** 首頁公告分類篩選——關掉不想看的分類，輪播跟列表都會跟著濾掉 */
+@Composable
+private fun NewsCategoryFilterDialog(store: NewsCategoryFilterStore, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.large)
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(20.dp),
+        ) {
+            Text("篩選首頁公告", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(12.dp))
+            NewsCategory.all.forEach { category ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { store.toggle(category) }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .rotate(45f)
+                            .background(NewsCategory.color(category), RoundedCornerShape(1.5.dp)),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(NewsCategory.labelZH(category), modifier = Modifier.weight(1f))
+                    if (!store.isHidden(category)) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("完成") }
+        }
+    }
 }
 
 @Composable
 private fun NewsRow(item: WSNewsItem, onClick: () -> Unit) {
-    val foilColor = item.categories.firstOrNull()?.let { categoryColor(it) } ?: Color(0xFF9E9E9E)
+    val foilColor = item.categories.firstOrNull()?.let { NewsCategory.color(it) } ?: Color(0xFF9E9E9E)
     Column(
         Modifier
             .fillMaxWidth()
@@ -227,15 +292,15 @@ private fun NewsRow(item: WSNewsItem, onClick: () -> Unit) {
                         Modifier
                             .size(6.dp)
                             .rotate(45f)
-                            .background(categoryColor(category), RoundedCornerShape(1.5.dp)),
+                            .background(NewsCategory.color(category), RoundedCornerShape(1.5.dp)),
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        category,
+                        NewsCategory.labelZH(category),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 0.4.sp,
-                        color = categoryTint(category),
+                        color = NewsCategory.tint(category),
                     )
                 }
             }
@@ -367,7 +432,7 @@ private fun HeroCarousel(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HorizontalPager(state = pagerState) { page ->
             val item = items[page]
-            HeroSlide(item, categoryColor(item.categories.firstOrNull() ?: ""), networkPolicy) {
+            HeroSlide(item, NewsCategory.color(item.categories.firstOrNull() ?: ""), networkPolicy) {
                 onSelect(item)
             }
         }
@@ -430,7 +495,7 @@ private fun HeroSlide(item: WSNewsItem, accent: Color, networkPolicy: NetworkPol
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    item.categories.firstOrNull() ?: "",
+                    item.categories.firstOrNull()?.let { NewsCategory.labelZH(it) } ?: "",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 0.4.sp,
@@ -491,13 +556,13 @@ private fun NewsDetailDialog(item: WSNewsItem, networkPolicy: NetworkPolicy, onD
             Row(verticalAlignment = Alignment.CenterVertically) {
                 item.categories.forEach { category ->
                     Text(
-                        category,
+                        NewsCategory.labelZH(category),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = categoryColor(category),
+                        color = NewsCategory.color(category),
                         modifier = Modifier
                             .padding(end = 6.dp)
-                            .background(categoryColor(category).copy(alpha = 0.16f), CircleShape)
+                            .background(NewsCategory.color(category).copy(alpha = 0.16f), CircleShape)
                             .padding(horizontal = 8.dp, vertical = 3.dp),
                     )
                 }
@@ -574,25 +639,5 @@ private fun NewsDetailDialog(item: WSNewsItem, networkPolicy: NetworkPolicy, onD
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("關閉") }
         }
     }
-}
-
-/** 卡角燙金色塊、寶石標記共用的飽和色 */
-private fun categoryColor(category: String): Color = when (category) {
-    "商品情報" -> Color(0xFF2196F3)
-    "カードリスト" -> Color(0xFF4CAF50)
-    "大会", "イベント" -> Color(0xFFFF9800)
-    "ルール" -> Color(0xFF9C27B0)
-    "デッキレシピ" -> Color(0xFFE91E63)
-    else -> Color(0xFF9E9E9E)
-}
-
-/** 分類文字用的淺色調，飽和色直接當文字色在深底上太刺眼 */
-private fun categoryTint(category: String): Color = when (category) {
-    "商品情報" -> Color(0xFF6DB8FF)
-    "カードリスト" -> Color(0xFF7BDF9E)
-    "大会", "イベント" -> Color(0xFFFFBD6B)
-    "ルール" -> Color(0xFFD9A3FF)
-    "デッキレシピ" -> Color(0xFFFF8FAB)
-    else -> Color(0xFF9E9E9E)
 }
 
