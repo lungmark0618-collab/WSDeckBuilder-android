@@ -195,13 +195,16 @@ private fun ReorderableSection(
                                             draggedCenter in otherTop..(otherTop + otherHeight)
                                         }
                                         if (targetIndex != -1 && targetIndex != currentIndex) {
-                                            val oldTop = positions[cardId]?.first ?: top
+                                            // 交換後這一列會落在「原本被換掉那列」的位置——不能用
+                                            // 交換後的自己重讀位置來算補償，Compose 這時候還沒
+                                            // 重新排版，讀到的還是交換前的舊值，補償永遠算成 0，
+                                            // 差一點點就會雪崩式一路連環交換到底（這次抓到的 bug）
+                                            val targetTop = positions[order[targetIndex].card.id]?.first ?: top
                                             val moved = order.toMutableList()
                                             val el = moved.removeAt(currentIndex)
                                             moved.add(targetIndex, el)
                                             order = moved
-                                            val newTop = positions[cardId]?.first ?: oldTop
-                                            dragOffsetY += oldTop - newTop
+                                            dragOffsetY += top - targetTop
                                         }
                                     },
                                 )
