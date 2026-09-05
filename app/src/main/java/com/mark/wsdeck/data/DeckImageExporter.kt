@@ -8,6 +8,7 @@ import androidx.core.graphics.withClip
 import androidx.core.graphics.withRotation
 import coil3.ImageLoader
 import coil3.request.ImageRequest
+import coil3.request.allowHardware
 import coil3.toBitmap
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -176,7 +177,11 @@ object DeckImageExporter {
     }
 
     private suspend fun loadArt(context: Context, loader: ImageLoader, url: String): Bitmap? = try {
-        val request = ImageRequest.Builder(context).data(url).build()
+        // allowHardware(false) 是必要的：Coil 預設在 API 26+ 解成硬體 bitmap，
+        // 畫到這裡用來出圖的軟體 Canvas 上一定會丟
+        // IllegalArgumentException("Software rendering doesn't support hardware
+        // bitmaps")——不是零星狀況，只要圖真的載到就一定炸，實機也一樣會中。
+        val request = ImageRequest.Builder(context).data(url).allowHardware(false).build()
         val result = loader.execute(request)
         (result as? coil3.request.SuccessResult)?.image?.toBitmap()
     } catch (e: Exception) {
