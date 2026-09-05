@@ -103,6 +103,37 @@ fun DeckDetailScreen(
         context.startActivity(Intent.createChooser(intent, "分享缺卡清單"))
     }
 
+    fun shareText(text: String, chooserTitle: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, chooserTitle))
+    }
+
+    fun exportSimpleText() {
+        showMenu = false
+        shareText(DeckExporter.simpleText(deck.deck.name, deck.entries, cardRepo), "分享牌表")
+    }
+
+    fun exportCollectorText() {
+        showMenu = false
+        shareText(DeckExporter.collectorText(deck.deck.name, deck.entries, cardRepo), "分享收牌清單")
+    }
+
+    fun exportJson() {
+        showMenu = false
+        val jsonText = DeckExporter.json(deck.deck.name, "", deck.entries)
+        val file = DeckExporter.jsonFile(context, deck.deck.name, jsonText) ?: return
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "分享 JSON 備份"))
+    }
+
     fun exportImage() {
         showMenu = false
         if (items.isEmpty() || isExporting) return
@@ -189,6 +220,21 @@ fun DeckDetailScreen(
                             DropdownMenuItem(
                                 text = { Text("匯出牌組圖片（可掃回）") },
                                 onClick = ::exportImage,
+                                enabled = items.isNotEmpty(),
+                            )
+                            DropdownMenuItem(
+                                text = { Text("匯出牌表（簡潔版）") },
+                                onClick = ::exportSimpleText,
+                                enabled = items.isNotEmpty(),
+                            )
+                            DropdownMenuItem(
+                                text = { Text("匯出收牌清單（含刷版）") },
+                                onClick = ::exportCollectorText,
+                                enabled = items.isNotEmpty(),
+                            )
+                            DropdownMenuItem(
+                                text = { Text("匯出 JSON 備份（可再匯入）") },
+                                onClick = ::exportJson,
                                 enabled = items.isNotEmpty(),
                             )
                             DropdownMenuItem(

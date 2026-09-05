@@ -1,11 +1,16 @@
 package com.mark.wsdeck.data
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
 /**
- * 把 QR 掃出的載荷落地成一副牌組。邏輯比照 iOS 的 DeckImporter.createDeck：
- * 精確刷版優先，查不到刷版但認得出卡號的落到該卡普卡刷版，兩邊都查不到才算跳過。
+ * 把匯入來源（QR 掃出的載荷、貼上的文字、選的檔案）落地成一副牌組。邏輯比照
+ * iOS 的 DeckImporter.createDeck：精確刷版優先，查不到刷版但認得出卡號的落到
+ * 該卡普卡刷版，兩邊都查不到才算跳過。
  *
- * iOS 那邊還多了 JSON／純文字牌表／檔案匯入三種來源，這裡先只服務 QR 掃圖——
- * 這是目前兩個平台唯一保證互通的格式，其他匯入管道留到之後有需要再補。
+ * parse(text) 依序試 JSON 備份格式、純文字牌表（含【牌組名】跟張數標記）、
+ * 最後才是沒有張數標記、同一張卡重複幾行代表幾張的純卡號清單——
+ * 對應 iOS DeckImporter.parse 依序嘗試 parseJSON/parseText/parseRepeatedIDs 的順序。
  */
 object DeckImporter {
 
@@ -19,9 +24,63 @@ object DeckImporter {
 
     class NoCardsFoundException : Exception("內容裡找不到任何卡號。")
 
-    class UnreadableTextException : Exception("檔案格式無法辨識，請確認每一行都是卡號。")
+    class UnreadableTextException : Exception(
+        "檔案格式無法辨識。請使用本 App 匯出的 JSON、牌表文字，或每行一張卡號的清單。",
+    )
 
     private val bareIdLine = Regex("^[A-Za-z0-9]+/[A-Za-z0-9]+-[A-Za-z0-9]+\$")
+
+    @Serializable
+    private data class ImportedEntry(val printingID: String, val count: Int)
+
+    @Serializable
+    private data class ImportedDeck(val name: String, val note: String? = null, val entries: List<ImportedEntry>)
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    /** 依序嘗試 JSON 備份、純文字牌表、純卡號清單三種格式，都不是就報無法辨識 */
+    fun parse(text: String): DeckImageExporter.Payload.Parsed =
+        parseJson(text) ?: parseText(text) ?: runCatching { parseRepeatedIds(text) }.getOrNull()
+            ?: throw UnreadableTextException()
+
+    /** 本 App 匯出的 JSON 備份格式，跟 iOS 的 DeckExporter.json 輸出相容 */
+    private fun parseJson(text: String): DeckImageExporter.Payload.Parsed? {
+        val decoded = try { json.decodeFromString<ImportedDeck>(text) } catch (e: Exception) { return null }
+        return DeckImageExporter.Payload.Parsed(decoded.name, decoded.entries.map { it.printingID to it.count })
+    }
+
+    // 張數與卡號之間容許常見寫法：「4 BRD/…」「4x BRD/…」「4. BRD/…」「4、BRD/…」
+    private val namePattern = Regex("【([^】]+)】")
+    private val entryPattern = Regex("""^\s*(?:缺)?(\d+)\s*[.、,xX×*]?\s*([A-Za-z0-9]+/[A-Za-z0-9]+-[A-Za-z0-9]+)""")
+    private val reversePattern = Regex("""([A-Za-z0-9]+/[A-Za-z0-9]+-[A-Za-z0-9]+)\s*[xX×*]\s*(\d+)""")
+
+    /** 純文字牌表：抓「張數 + 卡號」的行，順帶抓【】裡的牌組名，對應 iOS 的 parseText */
+    private fun parseText(text: String): DeckImageExporter.Payload.Parsed? {
+        var name = "匯入的牌組"
+        var nameFound = false
+        val entries = mutableListOf<Pair<String, Int>>()
+
+        for (line in text.lines()) {
+            if (!nameFound) {
+                namePattern.find(line)?.let { match ->
+                    name = match.groupValues[1].replace("收牌清單", "").trim()
+                    nameFound = true
+                }
+            }
+            val forward = entryPattern.find(line)
+            if (forward != null) {
+                val count = forward.groupValues[1].toIntOrNull()
+                if (count != null) entries += forward.groupValues[2] to count
+                continue
+            }
+            val reverse = reversePattern.find(line)
+            if (reverse != null) {
+                val count = reverse.groupValues[2].toIntOrNull()
+                if (count != null) entries += reverse.groupValues[1] to count
+            }
+        }
+        return if (entries.isEmpty()) null else DeckImageExporter.Payload.Parsed(name, entries)
+    }
 
     /**
      * 貓罐子等工具匯出的純卡號清單：沒有張數標記，同一張卡有幾張就重複幾行。

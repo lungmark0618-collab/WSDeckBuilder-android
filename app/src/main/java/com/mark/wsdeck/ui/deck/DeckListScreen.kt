@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -62,6 +63,7 @@ fun DeckListScreen(
     var importResult by remember { mutableStateOf<DeckImporter.Result?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
     var showQRScanner by remember { mutableStateOf(false) }
+    var showPasteImport by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
@@ -112,7 +114,25 @@ fun DeckListScreen(
                 return@launch
             }
             try {
-                val parsed = DeckImporter.parseRepeatedIds(text)
+                val parsed = DeckImporter.parse(text)
+                val result = DeckImporter.createDeck(
+                    parsed, cardRepo, repo, decks.map { it.deck.name },
+                )
+                prefs.activeDeckUuid = result.deckUuid
+                importResult = result
+            } catch (e: DeckImporter.NoCardsFoundException) {
+                importError = e.message
+            } catch (e: DeckImporter.UnreadableTextException) {
+                importError = e.message
+            }
+        }
+    }
+
+    fun importPastedText(text: String) {
+        showPasteImport = false
+        scope.launch {
+            try {
+                val parsed = DeckImporter.parse(text)
                 val result = DeckImporter.createDeck(
                     parsed, cardRepo, repo, decks.map { it.deck.name },
                 )
@@ -166,6 +186,11 @@ fun DeckListScreen(
                             showAddMenu = false
                             filePicker.launch(arrayOf("text/plain", "*/*"))
                         },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("貼上牌表文字匯入") },
+                        leadingIcon = { Icon(Icons.Filled.ContentPaste, contentDescription = null) },
+                        onClick = { showAddMenu = false; showPasteImport = true },
                     )
                 }
             }
@@ -272,6 +297,35 @@ fun DeckListScreen(
             onDismiss = { showQRScanner = false },
         )
     }
+
+    if (showPasteImport) {
+        PasteImportDialog(
+            onConfirm = ::importPastedText,
+            onDismiss = { showPasteImport = false },
+        )
+    }
+}
+
+/** 貼上本 App 匯出的 JSON 備份、牌表文字，或每行一張卡號的清單來新增牌組 */
+@Composable
+private fun PasteImportDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("貼上牌表文字匯入") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = { Text("貼上 JSON 備份、牌表文字，或每行一張卡號") },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text("匯入") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 private fun importMessage(result: DeckImporter.Result): String {
