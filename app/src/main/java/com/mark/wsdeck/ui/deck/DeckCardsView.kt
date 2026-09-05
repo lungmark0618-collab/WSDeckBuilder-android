@@ -45,7 +45,6 @@ fun DeckCardsTab(
     usesGrid: Boolean,
     networkPolicy: NetworkPolicy,
     editable: Boolean = true,
-    isReordering: Boolean = false,
     onReorderSection: (List<CardCount>) -> Unit = {},
     onAdjust: (printingId: String, delta: Int) -> Unit,
 ) {
@@ -60,7 +59,7 @@ fun DeckCardsTab(
     if (usesGrid) {
         DeckCardGrid(deck, sections, editable, networkPolicy, onAdjust)
     } else {
-        DeckCardList(deck, sections, items, editable, networkPolicy, isReordering, onReorderSection, onAdjust)
+        DeckCardList(deck, sections, items, editable, networkPolicy, onReorderSection, onAdjust)
     }
 }
 
@@ -86,7 +85,6 @@ private fun DeckCardList(
     allItems: List<CardCount>,
     editable: Boolean,
     networkPolicy: NetworkPolicy,
-    isReordering: Boolean = false,
     onReorderSection: (List<CardCount>) -> Unit = {},
     onAdjust: (String, Int) -> Unit,
 ) {
@@ -94,51 +92,47 @@ private fun DeckCardList(
     LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
         sections.forEach { section ->
             item(key = "list-header-${section.title}") { SectionHeader(section) }
-            if (isReordering) {
-                // 拖曳排序時改用一般 Column（非 lazy）才量得到每列實際位置，
-                // 一副牌最多 50 張，不用 lazy 回收也不會有效能問題
-                item(key = "list-reorder-${section.title}") {
-                    ReorderableCardColumn(
-                        items = section.items,
-                        entryByPrinting = entryByPrinting,
-                        networkPolicy = networkPolicy,
-                        onReordered = onReorderSection,
-                    )
-                }
-            } else {
-                items(section.items, key = { "row-${it.card.id}" }) { item ->
-                    DeckEntryRow(
-                        item = item,
-                        entryByPrinting = entryByPrinting,
-                        totalForName = DeckValidator.nameCount(item.card, allItems),
-                        editable = editable,
-                        networkPolicy = networkPolicy,
-                        onAdjust = onAdjust,
-                    )
-                }
+            // 清單模式一律可拖曳排序（抓最左邊把手），不用先切排序模式；
+            // 用一般 Column（非 lazy）才量得到每列實際位置，一副牌最多
+            // 50 張，不用 lazy 回收也不會有效能問題
+            item(key = "list-body-${section.title}") {
+                ReorderableSection(
+                    items = section.items,
+                    entryByPrinting = entryByPrinting,
+                    allItems = allItems,
+                    editable = editable,
+                    networkPolicy = networkPolicy,
+                    onReordered = onReorderSection,
+                    onAdjust = onAdjust,
+                )
             }
         }
     }
 }
 
 /**
- * 拖曳排序：抓住最左邊的把手圖示直接拖（不用長按），拖到想要的位置放開。
+ * 排序跟看詳情／改張數共用同一列，不用切模式：抓最左邊的把手圖示直接拖
+ * （不用長按），拖到想要的位置放開；點列的其他地方照常展開看各刷版張數。
  * 只在把手圖示這個小範圍偵測拖曳手勢——不是整列都能拖——這樣才不會跟
- * LazyColumn 本身的上下滑動捲動搶手勢；量每列實際位置
- * （onGloballyPositioned）決定該跟哪一列交換，不依賴 Compose 目前還沒有
- * 的原生 reorder API。
+ * LazyColumn 本身的上下滑動捲動搶手勢，也不會跟展開的點擊搶手勢；量每列
+ * 實際位置（onGloballyPositioned）決定該跟哪一列交換，不依賴 Compose 目前
+ * 還沒有的原生 reorder API。
  */
 @Composable
-private fun ReorderableCardColumn(
+private fun ReorderableSection(
     items: List<CardCount>,
     entryByPrinting: Map<String, Int>,
+    allItems: List<CardCount>,
+    editable: Boolean,
     networkPolicy: NetworkPolicy,
     onReordered: (List<CardCount>) -> Unit,
+    onAdjust: (String, Int) -> Unit,
 ) {
     var order by remember(items) { mutableStateOf(items) }
     var draggingId by remember { mutableStateOf<String?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     val positions = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
+    val expandedIds = remember { mutableStateMapOf<String, Boolean>() }
 
     Column {
         order.forEach { item ->
@@ -147,9 +141,13 @@ private fun ReorderableCardColumn(
             // key() 讓 Compose 用卡片 id（而不是位置）認節點——順序一變，被拖的那列
             // 若沒有 key 會在新位置被當成「不同節點」重建，手勢偵測的 coroutine
             // 跟著被砍掉，變成收到 onDragCancel 而不是 onDragEnd，onReordered
-            // 永遠不會被呼叫，拖曳看起來有動但放開後全部還原（就是這次抓到的 bug）
+            // 永遠不會被呼叫，拖曳看起來有動但放開後全部還原（之前抓到的 bug）
             key(cardId) {
-            Row(
+            val overLimit = DeckValidator.nameCount(item.card, allItems) > DeckValidator.NAME_LIMIT
+            val displayPrinting = item.card.printings.firstOrNull { (entryByPrinting[it.id] ?: 0) > 0 }
+                ?: item.card.defaultPrinting
+            val expanded = expandedIds[cardId] ?: false
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .onGloballyPositioned { coords ->
@@ -161,166 +159,125 @@ private fun ReorderableCardColumn(
                         if (isDragging) MaterialTheme.colorScheme.surfaceVariant
                         else Color.Transparent,
                     )
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .clickable { expandedIds[cardId] = !expanded },
             ) {
-                Icon(
-                    Icons.Filled.DragHandle,
-                    contentDescription = "拖曳排序",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        // 手把圖示本身再多留一點觸控範圍，手指不用點得極準
-                        .padding(8.dp)
-                        .pointerInput(cardId) {
-                            detectDragGestures(
-                                onDragStart = { draggingId = cardId; dragOffsetY = 0f },
-                                onDragEnd = {
-                                    draggingId = null
-                                    dragOffsetY = 0f
-                                    onReordered(order)
-                                },
-                                onDragCancel = { draggingId = null; dragOffsetY = 0f },
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    dragOffsetY += dragAmount.y
-                                    val (top, _) = positions[cardId] ?: return@detectDragGestures
-                                    val height = positions[cardId]?.second ?: 0f
-                                    val draggedCenter = top + dragOffsetY + height / 2f
-                                    val currentIndex = order.indexOfFirst { it.card.id == cardId }
-                                    val targetIndex = order.indexOfFirst { other ->
-                                        val (otherTop, otherHeight) = positions[other.card.id]
-                                            ?: return@indexOfFirst false
-                                        draggedCenter in otherTop..(otherTop + otherHeight)
-                                    }
-                                    if (targetIndex != -1 && targetIndex != currentIndex) {
-                                        val oldTop = positions[cardId]?.first ?: top
-                                        val moved = order.toMutableList()
-                                        val el = moved.removeAt(currentIndex)
-                                        moved.add(targetIndex, el)
-                                        order = moved
-                                        val newTop = positions[cardId]?.first ?: oldTop
-                                        dragOffsetY += oldTop - newTop
-                                    }
-                                },
-                            )
-                        },
-                )
-                val displayPrinting = item.card.printings.firstOrNull { (entryByPrinting[it.id] ?: 0) > 0 }
-                    ?: item.card.defaultPrinting
-                PolicyGatedCardImage(
-                    url = displayPrinting.imageURL,
-                    contentDescription = item.card.nameZH,
-                    networkPolicy = networkPolicy,
-                    modifier = Modifier
-                        .width(36.dp)
-                        .aspectRatio(63f / 88f)
-                        .clip(RoundedCornerShape(3.dp)),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    item.card.nameZH,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Text("×${item.count}", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.DragHandle,
+                        contentDescription = "拖曳排序",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            // 手把圖示本身再多留一點觸控範圍，手指不用點得極準
+                            .padding(8.dp)
+                            .pointerInput(cardId) {
+                                detectDragGestures(
+                                    onDragStart = { draggingId = cardId; dragOffsetY = 0f },
+                                    onDragEnd = {
+                                        draggingId = null
+                                        dragOffsetY = 0f
+                                        onReordered(order)
+                                    },
+                                    onDragCancel = { draggingId = null; dragOffsetY = 0f },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragOffsetY += dragAmount.y
+                                        val (top, _) = positions[cardId] ?: return@detectDragGestures
+                                        val height = positions[cardId]?.second ?: 0f
+                                        val draggedCenter = top + dragOffsetY + height / 2f
+                                        val currentIndex = order.indexOfFirst { it.card.id == cardId }
+                                        val targetIndex = order.indexOfFirst { other ->
+                                            val (otherTop, otherHeight) = positions[other.card.id]
+                                                ?: return@indexOfFirst false
+                                            draggedCenter in otherTop..(otherTop + otherHeight)
+                                        }
+                                        if (targetIndex != -1 && targetIndex != currentIndex) {
+                                            val oldTop = positions[cardId]?.first ?: top
+                                            val moved = order.toMutableList()
+                                            val el = moved.removeAt(currentIndex)
+                                            moved.add(targetIndex, el)
+                                            order = moved
+                                            val newTop = positions[cardId]?.first ?: oldTop
+                                            dragOffsetY += oldTop - newTop
+                                        }
+                                    },
+                                )
+                            },
+                    )
+                    // 純文字清單太難掃視，補一張縮圖當視覺錨點（與 iOS 同樣的理由）
+                    val isClimax = item.card.cardType == CardType.CLIMAX
+                    PolicyGatedCardImage(
+                        url = displayPrinting.imageURL,
+                        contentDescription = item.card.nameZH,
+                        networkPolicy = networkPolicy,
+                        modifier = Modifier
+                            .width(if (isClimax) 52.dp else 36.dp)
+                            .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)
+                            .clip(RoundedCornerShape(3.dp)),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            item.card.nameZH,
+                            color = if (overLimit) MaterialTheme.colorScheme.error
+                                   else MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 2,
+                        )
+                        val rarities = item.card.printings
+                            .mapNotNull { p -> (entryByPrinting[p.id] ?: 0).takeIf { it > 0 }?.let { "${p.rarity}×$it" } }
+                            .joinToString(" ")
+                        Text(
+                            rarities.ifEmpty { item.card.id },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        "×${item.count}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (overLimit) MaterialTheme.colorScheme.error
+                               else MaterialTheme.colorScheme.onSurface,
+                    )
+                    Icon(
+                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
+                if (expanded) {
+                    Column(Modifier.padding(start = 62.dp, end = 16.dp, bottom = 6.dp)) {
+                        item.card.printings.forEach { printing ->
+                            val count = entryByPrinting[printing.id] ?: 0
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(printing.rarity, style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.width(48.dp))
+                                Text(
+                                    printing.id,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (editable) {
+                                    CountStepper(count) { delta -> onAdjust(printing.id, delta) }
+                                } else {
+                                    Text("×$count", style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    }
+                }
             }
             HorizontalDivider()
             }
         }
     }
-}
-
-@Composable
-private fun DeckEntryRow(
-    item: CardCount,
-    entryByPrinting: Map<String, Int>,
-    totalForName: Int,
-    editable: Boolean,
-    networkPolicy: NetworkPolicy,
-    onAdjust: (String, Int) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val overLimit = totalForName > DeckValidator.NAME_LIMIT
-    // 牌組中實際放的刷版優先顯示縮圖，沒有才退回普卡
-    val displayPrinting = item.card.printings.firstOrNull { (entryByPrinting[it.id] ?: 0) > 0 }
-        ?: item.card.defaultPrinting
-
-    Column(Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // 純文字清單太難掃視，補一張縮圖當視覺錨點（與 iOS 同樣的理由）
-            val isClimax = item.card.cardType == CardType.CLIMAX
-            PolicyGatedCardImage(
-                url = displayPrinting.imageURL,
-                contentDescription = item.card.nameZH,
-                networkPolicy = networkPolicy,
-                modifier = Modifier
-                    .width(if (isClimax) 52.dp else 36.dp)
-                    .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)
-                    .clip(RoundedCornerShape(3.dp)),
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    item.card.nameZH,
-                    color = if (overLimit) MaterialTheme.colorScheme.error
-                           else MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2,
-                )
-                val rarities = item.card.printings
-                    .mapNotNull { p -> (entryByPrinting[p.id] ?: 0).takeIf { it > 0 }?.let { "${p.rarity}×$it" } }
-                    .joinToString(" ")
-                Text(
-                    rarities.ifEmpty { item.card.id },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                "×${item.count}",
-                style = MaterialTheme.typography.titleMedium,
-                color = if (overLimit) MaterialTheme.colorScheme.error
-                       else MaterialTheme.colorScheme.onSurface,
-            )
-            Icon(
-                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                contentDescription = null,
-                modifier = Modifier.padding(start = 4.dp),
-            )
-        }
-        if (expanded) {
-            Column(Modifier.padding(start = 62.dp, end = 16.dp, bottom = 6.dp)) {
-                item.card.printings.forEach { printing ->
-                    val count = entryByPrinting[printing.id] ?: 0
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(printing.rarity, style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.width(48.dp))
-                        Text(
-                            printing.id,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (editable) {
-                            CountStepper(count) { delta -> onAdjust(printing.id, delta) }
-                        } else {
-                            Text("×$count", style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    HorizontalDivider()
 }
 
 // ── 圖片格子（依刷版分格，一張卡放了兩種稀有度就顯示兩格）─────────

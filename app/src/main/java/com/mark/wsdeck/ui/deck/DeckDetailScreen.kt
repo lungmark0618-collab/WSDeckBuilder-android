@@ -12,13 +12,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -62,8 +60,6 @@ fun DeckDetailScreen(
     val prefs = remember { Prefs(context) }
     // 圖片／清單各自記憶，跨牌組共用一個設定（與 iOS 的 deckUsesGrid 一致）
     var usesGrid by remember { mutableStateOf(prefs.deckUsesGrid) }
-    // 拖曳排序只在清單模式才有意義，跟「編輯」（加減張數）分開，不互相干擾
-    var isReordering by remember { mutableStateOf(false) }
 
     val items = remember(deck.entries, deck.deck.cardOrder) {
         val grouped = groupByCard(deck.entries, cardRepo)
@@ -184,16 +180,6 @@ fun DeckDetailScreen(
                                 contentDescription = if (usesGrid) "改為清單顯示" else "改為圖片顯示",
                             )
                         }
-                        // 拖曳排序只在清單模式才有意義（原生格線的排列跟著清單順序走，
-                        // 但排序動作要回清單模式做）
-                        if (!usesGrid) {
-                            IconButton(onClick = { isReordering = !isReordering }) {
-                                Icon(
-                                    if (isReordering) Icons.Filled.Check else Icons.Filled.SwapVert,
-                                    contentDescription = if (isReordering) "完成排序" else "拖曳排序卡表",
-                                )
-                            }
-                        }
                     }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
@@ -264,7 +250,6 @@ fun DeckDetailScreen(
                     items = items,
                     usesGrid = usesGrid,
                     networkPolicy = networkPolicy,
-                    isReordering = isReordering,
                     onReorderSection = ::reorderSection,
                     onAdjust = { printingId, delta ->
                         scope.launch { deckRepo.adjust(uuid, printingId, delta) }
