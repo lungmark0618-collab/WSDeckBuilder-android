@@ -144,6 +144,11 @@ private fun ReorderableCardColumn(
         order.forEach { item ->
             val cardId = item.card.id
             val isDragging = draggingId == cardId
+            // key() 讓 Compose 用卡片 id（而不是位置）認節點——順序一變，被拖的那列
+            // 若沒有 key 會在新位置被當成「不同節點」重建，手勢偵測的 coroutine
+            // 跟著被砍掉，變成收到 onDragCancel 而不是 onDragEnd，onReordered
+            // 永遠不會被呼叫，拖曳看起來有動但放開後全部還原（就是這次抓到的 bug）
+            key(cardId) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -223,6 +228,7 @@ private fun ReorderableCardColumn(
                 Text("×${item.count}", style = MaterialTheme.typography.titleMedium)
             }
             HorizontalDivider()
+            }
         }
     }
 }
