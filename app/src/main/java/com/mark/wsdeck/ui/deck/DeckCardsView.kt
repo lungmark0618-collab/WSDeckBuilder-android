@@ -133,6 +133,11 @@ private fun ReorderableSection(
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     val positions = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
     val expandedIds = remember { mutableStateMapOf<String, Boolean>() }
+    // 換位後要補償多少位移，等 Compose 真的重新排版、onGloballyPositioned 回報
+    // 新位置時才算，不要在換位當下用公式硬推——列高不一致（名字有沒有換行、CX
+    // 卡尺寸不同）時公式會算不準，殘留誤差每換一次位就多一點，滑順一點就整個
+    // 雪崩到底部（這次抓到的 bug，上一版用「目標原本位置」硬算補償還是不夠準）
+    var pendingSwapOldTop by remember { mutableStateOf<Float?>(null) }
 
     Column {
         order.forEach { item ->
@@ -151,7 +156,16 @@ private fun ReorderableSection(
                 Modifier
                     .fillMaxWidth()
                     .onGloballyPositioned { coords ->
-                        positions[cardId] = coords.positionInParent().y to coords.size.height.toFloat()
+                        val newTop = coords.positionInParent().y
+                        // 排到這一步表示交換後真的重新排版完成了，用「換位前的舊位置」
+                        // 跟這個剛量到的新位置的差，把 dragOffsetY 補回來，手指底下的
+                        // 視覺位置才不會跳
+                        val pending = pendingSwapOldTop
+                        if (isDragging && pending != null) {
+                            dragOffsetY += pending - newTop
+                            pendingSwapOldTop = null
+                        }
+                        positions[cardId] = newTop to coords.size.height.toFloat()
                     }
                     .graphicsLayer { translationY = if (isDragging) dragOffsetY else 0f }
                     .zIndex(if (isDragging) 1f else 0f)
@@ -175,16 +189,28 @@ private fun ReorderableSection(
                             .padding(8.dp)
                             .pointerInput(cardId) {
                                 detectDragGestures(
-                                    onDragStart = { draggingId = cardId; dragOffsetY = 0f },
+                                    onDragStart = {
+                                        draggingId = cardId
+                                        dragOffsetY = 0f
+                                        pendingSwapOldTop = null
+                                    },
                                     onDragEnd = {
                                         draggingId = null
                                         dragOffsetY = 0f
+                                        pendingSwapOldTop = null
                                         onReordered(order)
                                     },
-                                    onDragCancel = { draggingId = null; dragOffsetY = 0f },
+                                    onDragCancel = {
+                                        draggingId = null
+                                        dragOffsetY = 0f
+                                        pendingSwapOldTop = null
+                                    },
                                     onDrag = { change, dragAmount ->
                                         change.consume()
                                         dragOffsetY += dragAmount.y
+                                        // 上一次換位的補償還沒等到重新排版回報，先別再判定下一次
+                                        // 換位——不然會拿還沒補償好、偏掉的位置去判斷，一樣會雪崩
+                                        if (pendingSwapOldTop != null) return@detectDragGestures
                                         val (top, _) = positions[cardId] ?: return@detectDragGestures
                                         val height = positions[cardId]?.second ?: 0f
                                         val draggedCenter = top + dragOffsetY + height / 2f
@@ -195,16 +221,11 @@ private fun ReorderableSection(
                                             draggedCenter in otherTop..(otherTop + otherHeight)
                                         }
                                         if (targetIndex != -1 && targetIndex != currentIndex) {
-                                            // 交換後這一列會落在「原本被換掉那列」的位置——不能用
-                                            // 交換後的自己重讀位置來算補償，Compose 這時候還沒
-                                            // 重新排版，讀到的還是交換前的舊值，補償永遠算成 0，
-                                            // 差一點點就會雪崩式一路連環交換到底（這次抓到的 bug）
-                                            val targetTop = positions[order[targetIndex].card.id]?.first ?: top
+                                            pendingSwapOldTop = top
                                             val moved = order.toMutableList()
                                             val el = moved.removeAt(currentIndex)
                                             moved.add(targetIndex, el)
                                             order = moved
-                                            dragOffsetY += top - targetTop
                                         }
                                     },
                                 )
