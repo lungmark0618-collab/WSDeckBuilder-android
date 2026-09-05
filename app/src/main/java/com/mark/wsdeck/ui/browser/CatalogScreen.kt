@@ -4,6 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -192,7 +196,7 @@ fun CatalogScreen(
 
     detail?.let { card ->
         CardDetailSheet(
-            card, repo, collectionIndex, collectionRepo, networkPolicy, appearance,
+            card, results, repo, collectionIndex, collectionRepo, networkPolicy, appearance,
             activeDeck, deckRepo,
             onSelectRelated = { detail = it },
             onDismiss = { detail = null },
@@ -742,10 +746,16 @@ private fun CardTile(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 點卡片彈出：大圖 + 刷版切換 + 中日對照，可左右滑動切換同一批（搜尋結果或
+ * 牌組卡表）的卡片，對應 iOS 的 CardDetailSheet（siblings 分頁）。
+ * siblings 不含這張卡或只有一張時，就只顯示這一張，不出現滑動提示。
+ */
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun CardDetailSheet(
     card: Card,
+    siblings: List<Card>,
     repo: CardRepository,
     collectionIndex: Map<String, Int>,
     collectionRepo: CollectionRepository,
@@ -756,17 +766,71 @@ private fun CardDetailSheet(
     onSelectRelated: (Card) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val pages = remember(card.id, siblings) {
+        if (siblings.size > 1 && siblings.any { it.id == card.id }) siblings else listOf(card)
+    }
+    val initialPage = remember(card.id, pages) { pages.indexOfFirst { it.id == card.id }.coerceAtLeast(0) }
+    val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column {
+            if (pages.size > 1) {
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${pagerState.currentPage + 1} / ${pages.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxWidth().height(620.dp),
+            ) { pageIndex ->
+                CardDetailContent(
+                    card = pages[pageIndex],
+                    repo = repo,
+                    collectionIndex = collectionIndex,
+                    collectionRepo = collectionRepo,
+                    networkPolicy = networkPolicy,
+                    appearance = appearance,
+                    activeDeck = activeDeck,
+                    deckRepo = deckRepo,
+                    onSelectRelated = onSelectRelated,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardDetailContent(
+    card: Card,
+    repo: CardRepository,
+    collectionIndex: Map<String, Int>,
+    collectionRepo: CollectionRepository,
+    networkPolicy: NetworkPolicy,
+    appearance: AppearanceSettings,
+    activeDeck: DeckWithEntries?,
+    deckRepo: DeckRepository,
+    onSelectRelated: (Card) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val appearanceUi by appearance.ui.collectAsStateWithLifecycle()
     // 預設選第一個刷版的大圖；點下面的刷版標籤可以切著看，對應 iOS 詳情頁的大圖＋刷版切換
     var selectedPrinting by remember(card.id) { mutableStateOf(card.defaultPrinting) }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
             PolicyGatedCardImage(
                 url = selectedPrinting.imageURL,
                 contentDescription = card.nameZH,
@@ -851,7 +915,6 @@ private fun CardDetailSheet(
                     scope.launch { deckRepo.adjust(activeDeck.deck.uuid, printingId, delta) }
                 }
             }
-        }
     }
 }
 
