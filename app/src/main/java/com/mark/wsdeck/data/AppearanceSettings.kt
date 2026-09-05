@@ -98,6 +98,8 @@ class AppearanceSettings(context: Context) {
         val fixedAccent: AccentPreset = AccentPreset.ROSE,
         /** 目前瀏覽的作品（由圖鑑設定），供 accentMode == FOLLOW_TITLE 使用 */
         val currentTitleCode: String = "",
+        /** 卡片詳情頁要不要多顯示一份日文原文 */
+        val showJapanese: Boolean = false,
     ) {
         val accentColor: Color
             get() = when (accentMode) {
@@ -114,6 +116,7 @@ class AppearanceSettings(context: Context) {
             background = prefs.appBackground,
             accentMode = prefs.appAccentMode,
             fixedAccent = prefs.appFixedAccent,
+            showJapanese = prefs.showJapanese,
         ),
     )
     val ui: StateFlow<UiState> = _ui
@@ -146,6 +149,11 @@ class AppearanceSettings(context: Context) {
     fun setFixedAccent(value: AccentPreset) {
         prefs.appFixedAccent = value
         _ui.update { it.copy(fixedAccent = value) }
+    }
+
+    fun setShowJapanese(value: Boolean) {
+        prefs.showJapanese = value
+        _ui.update { it.copy(showJapanese = value) }
     }
 
     /** 圖鑑畫面鎖定／離開某作品時呼叫，不落地存檔——跟 iOS 的 currentTitleCode 一樣是瞬時狀態 */

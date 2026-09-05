@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -190,7 +191,10 @@ fun CatalogScreen(
     }
 
     detail?.let { card ->
-        CardDetailSheet(card, repo.titleCode(card), collectionIndex, collectionRepo, networkPolicy) { detail = null }
+        CardDetailSheet(
+            card, collectionIndex, collectionRepo, networkPolicy, appearance,
+            activeDeck, deckRepo,
+        ) { detail = null }
     }
 
     if (showDeckQuickView && activeDeck != null) {
@@ -740,13 +744,16 @@ private fun CardTile(
 @Composable
 private fun CardDetailSheet(
     card: Card,
-    titleCode: String?,
     collectionIndex: Map<String, Int>,
     collectionRepo: CollectionRepository,
     networkPolicy: NetworkPolicy,
+    appearance: AppearanceSettings,
+    activeDeck: DeckWithEntries?,
+    deckRepo: DeckRepository,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val appearanceUi by appearance.ui.collectAsStateWithLifecycle()
     // 預設選第一個刷版的大圖；點下面的刷版標籤可以切著看，對應 iOS 詳情頁的大圖＋刷版切換
     var selectedPrinting by remember(card.id) { mutableStateOf(card.defaultPrinting) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -777,8 +784,25 @@ private fun CardDetailSheet(
                     }
                 }
             }
-            Text(card.nameZH, style = MaterialTheme.typography.titleMedium)
-            Text(card.nameJP, style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(card.nameZH, style = MaterialTheme.typography.titleMedium)
+                    // 未翻譯的卡名兩邊一樣，顯示日文只會重複一次
+                    if (appearanceUi.showJapanese && card.nameJP != card.nameZH) {
+                        Text(card.nameJP, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                // 中日切換：跟卡片文字一樣，開了就多顯示一份日文原文，方便對照 ruling
+                IconButton(onClick = { appearance.setShowJapanese(!appearanceUi.showJapanese) }) {
+                    Icon(
+                        Icons.Filled.Translate,
+                        contentDescription = if (appearanceUi.showJapanese) "隱藏日文原文" else "顯示日文原文",
+                        tint = if (appearanceUi.showJapanese) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Text(
                 buildString {
                     append(card.id)
@@ -796,11 +820,70 @@ private fun CardDetailSheet(
                     style = MaterialTheme.typography.labelMedium)
             }
             HorizontalDivider()
-            card.textLinesZH.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            if (card.textLinesZH.isEmpty()) {
+                Text("（無能力文字）", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                card.textLinesZH.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                if (appearanceUi.showJapanese) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("原文（日文）", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    card.textLinesJP.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                }
+            }
             HorizontalDivider()
             CollectionControls(card, collectionIndex) { printingId, delta ->
                 scope.launch { collectionRepo.adjust(printingId, delta) }
             }
+            if (activeDeck != null) {
+                HorizontalDivider()
+                DeckControls(card, activeDeck) { printingId, delta ->
+                    scope.launch { deckRepo.adjust(activeDeck.deck.uuid, printingId, delta) }
+                }
+            }
+        }
+    }
+}
+
+/** 加入目前作用中的牌組：跟「我的收藏」同一套 +/- 排版，對應 iOS 的 deckControls */
+@Composable
+private fun DeckControls(
+    card: Card,
+    activeDeck: DeckWithEntries,
+    onAdjust: (printingId: String, delta: Int) -> Unit,
+) {
+    val entryByPrinting = remember(activeDeck.entries) {
+        activeDeck.entries.associate { it.printingId to it.count }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            "加入「${activeDeck.deck.name}」",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        card.printings.forEach { printing ->
+            val count = entryByPrinting[printing.id] ?: 0
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(printing.rarity, style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.width(48.dp))
+                Text(
+                    printing.id,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                CountStepper(count) { delta -> onAdjust(printing.id, delta) }
+            }
+        }
+        val total = card.printings.sumOf { entryByPrinting[it.id] ?: 0 }
+        if (total > 0) {
+            Text(
+                "合計 $total / ${DeckValidator.NAME_LIMIT} 上限",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (total > DeckValidator.NAME_LIMIT) MaterialTheme.colorScheme.error
+                       else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

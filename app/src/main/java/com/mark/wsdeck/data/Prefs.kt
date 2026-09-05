@@ -137,6 +137,11 @@ class Prefs(context: Context) {
             ?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
         set(value) = prefs.edit().putString(KEY_PINNED_DECK_UUIDS, value.joinToString(",")).apply()
 
+    /** 卡片詳情頁要不要多顯示一份日文原文，對應 iOS AppearanceSettings.showJapanese */
+    var showJapanese: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_JAPANESE, false)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_JAPANESE, value).apply()
+
     // MARK: - 首頁公告分類篩選（對應 iOS 的 NewsCategoryFilterStore）
     /** 使用者關掉不想看的分類——存要隱藏的，不是要顯示的，官網以後多出新分類
      *  預設還是顯示，不會因為沒被列進白名單就悄悄消失 */
@@ -167,5 +172,6 @@ class Prefs(context: Context) {
         private const val KEY_FAVORITE_TITLE_CODES = "favorite_title_codes"
         private const val KEY_PINNED_DECK_UUIDS = "pinned_deck_uuids"
         private const val KEY_HIDDEN_NEWS_CATEGORIES = "hidden_news_categories"
+        private const val KEY_SHOW_JAPANESE = "show_japanese"
     }
 }
