@@ -192,9 +192,11 @@ fun CatalogScreen(
 
     detail?.let { card ->
         CardDetailSheet(
-            card, collectionIndex, collectionRepo, networkPolicy, appearance,
+            card, repo, collectionIndex, collectionRepo, networkPolicy, appearance,
             activeDeck, deckRepo,
-        ) { detail = null }
+            onSelectRelated = { detail = it },
+            onDismiss = { detail = null },
+        )
     }
 
     if (showDeckQuickView && activeDeck != null) {
@@ -744,12 +746,14 @@ private fun CardTile(
 @Composable
 private fun CardDetailSheet(
     card: Card,
+    repo: CardRepository,
     collectionIndex: Map<String, Int>,
     collectionRepo: CollectionRepository,
     networkPolicy: NetworkPolicy,
     appearance: AppearanceSettings,
     activeDeck: DeckWithEntries?,
     deckRepo: DeckRepository,
+    onSelectRelated: (Card) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -832,6 +836,11 @@ private fun CardDetailSheet(
                     card.textLinesJP.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 }
             }
+            val relations = remember(card.id) { repo.relations(card) }
+            if (relations.isNotEmpty()) {
+                HorizontalDivider()
+                RelationsSection(relations, networkPolicy, onSelectRelated)
+            }
             HorizontalDivider()
             CollectionControls(card, collectionIndex) { printingId, delta ->
                 scope.launch { collectionRepo.adjust(printingId, delta) }
@@ -840,6 +849,49 @@ private fun CardDetailSheet(
                 HorizontalDivider()
                 DeckControls(card, activeDeck) { printingId, delta ->
                     scope.launch { deckRepo.adjust(activeDeck.deck.uuid, printingId, delta) }
+                }
+            }
+        }
+    }
+}
+
+/** 關聯卡片（羈絆／CX連動／被指名），對應 iOS 的 relationsSection */
+@Composable
+private fun RelationsSection(
+    relations: List<CardRelation>,
+    networkPolicy: NetworkPolicy,
+    onSelect: (Card) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("關聯卡片", style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(relations, key = { it.id }) { relation ->
+                Column(
+                    Modifier.width(92.dp).clickable { onSelect(relation.card) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    PolicyGatedCardImage(
+                        url = relation.card.defaultPrinting.imageURL,
+                        contentDescription = relation.card.nameZH,
+                        networkPolicy = networkPolicy,
+                        modifier = Modifier
+                            .width(if (relation.card.cardType == CardType.CLIMAX) 84.dp else 60.dp)
+                            .aspectRatio(if (relation.card.cardType == CardType.CLIMAX) 88f / 63f else 63f / 88f)
+                            .clip(RoundedCornerShape(6.dp)),
+                    )
+                    Text(
+                        relation.kind.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (relation.kind == CardRelation.Kind.REFERENCED_BY)
+                            MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        relation.card.nameZH,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 2,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
                 }
             }
         }

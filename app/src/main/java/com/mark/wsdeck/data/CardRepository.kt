@@ -43,7 +43,11 @@ class CardRepository(private val context: Context) {
         val titleByCardId: Map<String, String> = emptyMap(),
         val cardById: Map<String, Card> = emptyMap(),
         val allTraits: List<String> = emptyList(),
+        val relationIndex: Map<String, List<CardRelation>> = emptyMap(),
     )
+
+    /** 能力文字裡以「」指名的關聯卡片（羈絆／CX連動／被指名），對應 iOS CardDatabase.relations(for:) */
+    fun relations(card: Card): List<CardRelation> = snapshot.relationIndex[card.id] ?: emptyList()
 
     var snapshot: Snapshot = Snapshot()
         private set
@@ -117,6 +121,7 @@ class CardRepository(private val context: Context) {
             titleByCardId = titleByCardId,
             cardById = cardById,
             allTraits = cards.flatMap { it.traitsJP }.distinct().sorted(),
+            relationIndex = buildCardRelations(cards),
         )
         loadError = null
         true
