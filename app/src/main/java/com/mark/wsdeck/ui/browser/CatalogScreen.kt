@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -189,7 +190,7 @@ fun CatalogScreen(
     }
 
     detail?.let { card ->
-        CardDetailSheet(card, repo.titleCode(card), collectionIndex, collectionRepo) { detail = null }
+        CardDetailSheet(card, repo.titleCode(card), collectionIndex, collectionRepo, networkPolicy) { detail = null }
     }
 
     if (showDeckQuickView && activeDeck != null) {
@@ -742,9 +743,12 @@ private fun CardDetailSheet(
     titleCode: String?,
     collectionIndex: Map<String, Int>,
     collectionRepo: CollectionRepository,
+    networkPolicy: NetworkPolicy,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    // 預設選第一個刷版的大圖；點下面的刷版標籤可以切著看，對應 iOS 詳情頁的大圖＋刷版切換
+    var selectedPrinting by remember(card.id) { mutableStateOf(card.defaultPrinting) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -752,6 +756,27 @@ private fun CardDetailSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            PolicyGatedCardImage(
+                url = selectedPrinting.imageURL,
+                contentDescription = card.nameZH,
+                networkPolicy = networkPolicy,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(if (card.cardType == CardType.CLIMAX) 88f / 63f else 63f / 88f)
+                    .clip(RoundedCornerShape(10.dp)),
+            )
+            if (card.printings.size > 1) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    card.printings.forEach { printing ->
+                        FilterChip(
+                            selected = printing.id == selectedPrinting.id,
+                            onClick = { selectedPrinting = printing },
+                            label = { Text(printing.rarity) },
+                        )
+                    }
+                }
+            }
             Text(card.nameZH, style = MaterialTheme.typography.titleMedium)
             Text(card.nameJP, style = MaterialTheme.typography.bodySmall)
             Text(

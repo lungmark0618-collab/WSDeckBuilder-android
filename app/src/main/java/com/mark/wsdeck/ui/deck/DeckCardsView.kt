@@ -2,7 +2,7 @@ package com.mark.wsdeck.ui.deck
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -122,9 +122,11 @@ private fun DeckCardList(
 }
 
 /**
- * 拖曳排序：長按拿起一列，拖到想要的位置放開。用 pointerInput 手動偵測拖曳
- * 手勢，量每列實際位置（onGloballyPositioned）決定該跟哪一列交換，
- * 不依賴 Compose 目前還沒有的原生 reorder API。
+ * 拖曳排序：抓住最左邊的把手圖示直接拖（不用長按），拖到想要的位置放開。
+ * 只在把手圖示這個小範圍偵測拖曳手勢——不是整列都能拖——這樣才不會跟
+ * LazyColumn 本身的上下滑動捲動搶手勢；量每列實際位置
+ * （onGloballyPositioned）決定該跟哪一列交換，不依賴 Compose 目前還沒有
+ * 的原生 reorder API。
  */
 @Composable
 private fun ReorderableCardColumn(
@@ -154,46 +156,50 @@ private fun ReorderableCardColumn(
                         if (isDragging) MaterialTheme.colorScheme.surfaceVariant
                         else Color.Transparent,
                     )
-                    .pointerInput(cardId) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = { draggingId = cardId; dragOffsetY = 0f },
-                            onDragEnd = {
-                                draggingId = null
-                                dragOffsetY = 0f
-                                onReordered(order)
-                            },
-                            onDragCancel = { draggingId = null; dragOffsetY = 0f },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                dragOffsetY += dragAmount.y
-                                val (top, _) = positions[cardId] ?: return@detectDragGesturesAfterLongPress
-                                val height = positions[cardId]?.second ?: 0f
-                                val draggedCenter = top + dragOffsetY + height / 2f
-                                val currentIndex = order.indexOfFirst { it.card.id == cardId }
-                                val targetIndex = order.indexOfFirst { other ->
-                                    val (otherTop, otherHeight) = positions[other.card.id] ?: return@indexOfFirst false
-                                    draggedCenter in otherTop..(otherTop + otherHeight)
-                                }
-                                if (targetIndex != -1 && targetIndex != currentIndex) {
-                                    val oldTop = positions[cardId]?.first ?: top
-                                    val moved = order.toMutableList()
-                                    val el = moved.removeAt(currentIndex)
-                                    moved.add(targetIndex, el)
-                                    order = moved
-                                    val newTop = positions[cardId]?.first ?: oldTop
-                                    dragOffsetY += oldTop - newTop
-                                }
-                            },
-                        )
-                    }
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     Icons.Filled.DragHandle,
-                    contentDescription = null,
+                    contentDescription = "拖曳排序",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 8.dp),
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        // 手把圖示本身再多留一點觸控範圍，手指不用點得極準
+                        .padding(8.dp)
+                        .pointerInput(cardId) {
+                            detectDragGestures(
+                                onDragStart = { draggingId = cardId; dragOffsetY = 0f },
+                                onDragEnd = {
+                                    draggingId = null
+                                    dragOffsetY = 0f
+                                    onReordered(order)
+                                },
+                                onDragCancel = { draggingId = null; dragOffsetY = 0f },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    dragOffsetY += dragAmount.y
+                                    val (top, _) = positions[cardId] ?: return@detectDragGestures
+                                    val height = positions[cardId]?.second ?: 0f
+                                    val draggedCenter = top + dragOffsetY + height / 2f
+                                    val currentIndex = order.indexOfFirst { it.card.id == cardId }
+                                    val targetIndex = order.indexOfFirst { other ->
+                                        val (otherTop, otherHeight) = positions[other.card.id]
+                                            ?: return@indexOfFirst false
+                                        draggedCenter in otherTop..(otherTop + otherHeight)
+                                    }
+                                    if (targetIndex != -1 && targetIndex != currentIndex) {
+                                        val oldTop = positions[cardId]?.first ?: top
+                                        val moved = order.toMutableList()
+                                        val el = moved.removeAt(currentIndex)
+                                        moved.add(targetIndex, el)
+                                        order = moved
+                                        val newTop = positions[cardId]?.first ?: oldTop
+                                        dragOffsetY += oldTop - newTop
+                                    }
+                                },
+                            )
+                        },
                 )
                 val displayPrinting = item.card.printings.firstOrNull { (entryByPrinting[it.id] ?: 0) > 0 }
                     ?: item.card.defaultPrinting
