@@ -19,6 +19,12 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_DECK_USES_GRID, true)
         set(value) = prefs.edit().putBoolean(KEY_DECK_USES_GRID, value).apply()
 
+    /** 圖鑑搜尋結果用圖片格子還是文字清單，跟牌組卡表的設定分開記，
+     *  對應 iOS CardCatalogView 自己的顯示模式開關 */
+    var catalogUsesGrid: Boolean
+        get() = prefs.getBoolean(KEY_CATALOG_USES_GRID, true)
+        set(value) = prefs.edit().putBoolean(KEY_CATALOG_USES_GRID, value).apply()
+
     /** 上次靜默檢查卡表更新的時間（epoch ms），對應 iOS 的 lastCheckedAt */
     var cardDataLastCheckedAt: Long
         get() = prefs.getLong(KEY_CARD_DATA_CHECKED_AT, 0L)
@@ -152,6 +158,7 @@ class Prefs(context: Context) {
     companion object {
         private const val KEY_ACTIVE_DECK = "active_deck_uuid"
         private const val KEY_DECK_USES_GRID = "deck_uses_grid"
+        private const val KEY_CATALOG_USES_GRID = "catalog_uses_grid"
         private const val KEY_CARD_DATA_CHECKED_AT = "card_data_last_checked_at"
         private const val KEY_ANNOUNCEMENT_READ_IDS = "announcement_read_ids"
         private const val KEY_ANNOUNCEMENT_DELETED_IDS = "announcement_deleted_ids"

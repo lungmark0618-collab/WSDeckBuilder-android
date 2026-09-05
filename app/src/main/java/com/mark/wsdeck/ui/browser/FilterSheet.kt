@@ -31,9 +31,6 @@ import com.mark.wsdeck.ui.theme.AppSurface
  * 滿版半透明疊層取代原本的 ModalBottomSheet——原本用橫向捲動 chip 列，
  * 選項一多（尤其特徵）大半都藏在畫面外側滑才看得到，改成 FlowRow 自動換行、
  * 疊層佔滿整個螢幕，一次能攤開的空間也更大。跟 iOS 同一套設計決定。
- *
- * 「收錄來源」沒有搬過來——那個依賴 iOS 端的 CardSource，卡表資料裡目前
- * 沒有對應欄位。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -200,6 +197,19 @@ fun FilterSheet(
                                 }
                             }
                         }
+                        FilterCard("收錄來源") {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                CardSource.entries.forEach { source ->
+                                    val on = source in query.sources
+                                    Chip(source.label, on) {
+                                        onQueryChange(query.copy(
+                                            sources = if (on) query.sources - source
+                                                     else query.sources + source))
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Spacer(Modifier.height(120.dp))
@@ -222,8 +232,8 @@ private fun TopBar(query: SearchQuery, onQueryChange: (SearchQuery) -> Unit, onD
         TextButton(
             onClick = { onQueryChange(query.copy(
                 levels = emptySet(), colors = emptySet(), types = emptySet(),
-                triggers = emptySet(), traits = emptySet(), titleCode = null,
-                ownership = OwnershipFilter.ALL,
+                triggers = emptySet(), traits = emptySet(), sources = emptySet(),
+                titleCode = null, ownership = OwnershipFilter.ALL,
             )) },
             enabled = query.hasActiveFilters,
         ) { Text("全部清除") }
@@ -248,7 +258,7 @@ private fun MoreFiltersDisclosure(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("更多篩選（判定標誌）", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Text("更多篩選（判定標誌、收錄來源）", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             Icon(if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, contentDescription = null)
         }
     }

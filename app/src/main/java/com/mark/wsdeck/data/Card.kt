@@ -45,6 +45,8 @@ data class Card(
     @SerialName("traits_jp") val traitsJP: List<String> = emptyList(),
     @SerialName("text_jp") val textJP: String = "",
     @SerialName("text_zh") val textZH: String = "",
+    /** 收錄來源（補充包／預組）；舊卡表沒有這欄位就當缺值，不擋整份解析 */
+    val source: CardSource? = null,
 ) {
     /** 普卡固定是第一個刷版 */
     val defaultPrinting: Printing get() = printings.first()
@@ -93,6 +95,19 @@ enum class CardType {
             CHARACTER -> "角色"
             EVENT -> "事件"
             CLIMAX -> "CX"
+        }
+}
+
+/** 收錄來源，對應 iOS 的 CardSource */
+@Serializable
+enum class CardSource {
+    @SerialName("booster") BOOSTER,
+    @SerialName("trial_deck") TRIAL_DECK;
+
+    val label: String
+        get() = when (this) {
+            BOOSTER -> "補充包"
+            TRIAL_DECK -> "預組"
         }
 }
 

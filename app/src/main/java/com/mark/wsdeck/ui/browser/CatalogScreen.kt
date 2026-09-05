@@ -8,6 +8,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -78,6 +79,8 @@ fun CatalogScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
+    // 搜尋結果格子／清單切換，跟牌組卡表的設定分開記，對應 iOS CardCatalogView 的顯示模式
+    var usesGrid by remember { mutableStateOf(prefs.catalogUsesGrid) }
 
     val decks by deckRepo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
     var activeDeckUuid by remember { mutableStateOf(prefs.activeDeckUuid) }
@@ -158,11 +161,16 @@ fun CatalogScreen(
                 repo.snapshot.browsableSets.firstOrNull { it.id == code }?.displayNameZH
             },
             hasActiveFilters = query.hasActiveFilters,
+            usesGrid = usesGrid,
             onKeyword = { query = query.copy(keyword = it) },
             onClearTitle = { query = SearchQuery() },
             onOpenFilter = {
                 showFilter = true
                 onboarding.notify(OnboardingStep.FILTER)
+            },
+            onToggleGrid = {
+                usesGrid = !usesGrid
+                prefs.catalogUsesGrid = usesGrid
             },
             announcements = announcements,
             onboarding = onboarding,
@@ -183,8 +191,14 @@ fun CatalogScreen(
         } else if (results.isEmpty()) {
             Box(Modifier.fillMaxSize(), Alignment.Center) { Text("沒有符合的卡片") }
         } else {
-            CardGrid(results, activeDeck, deckRepo, collectionIndex, networkPolicy, onboarding) { card ->
-                detail = card
+            if (usesGrid) {
+                CardGrid(results, activeDeck, deckRepo, collectionIndex, networkPolicy, onboarding) { card ->
+                    detail = card
+                }
+            } else {
+                CardList(results, activeDeck, deckRepo, onboarding) { card ->
+                    detail = card
+                }
             }
         }
     }
@@ -406,9 +420,11 @@ private fun SearchBarRow(
     keyword: String,
     pinnedTitle: String?,
     hasActiveFilters: Boolean,
+    usesGrid: Boolean,
     onKeyword: (String) -> Unit,
     onClearTitle: () -> Unit,
     onOpenFilter: () -> Unit,
+    onToggleGrid: () -> Unit,
     announcements: AnnouncementCenter,
     onboarding: OnboardingState,
 ) {
@@ -441,6 +457,14 @@ private fun SearchBarRow(
                 },
                 modifier = Modifier.onboardingAnchor(OnboardingStep.FILTER, onboarding),
             ) { Icon(Icons.Filled.FilterList, contentDescription = "篩選") }
+            Spacer(Modifier.width(4.dp))
+            // 搜尋結果格子／清單切換，對應 iOS CardCatalogView 工具列的顯示模式按鈕
+            IconButton(onClick = onToggleGrid) {
+                Icon(
+                    if (usesGrid) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
+                    contentDescription = if (usesGrid) "改為清單顯示" else "改為圖片顯示",
+                )
+            }
             // 只在最上層（沒鎖定作品）放鈴鐺，鎖進單一作品後就不重複顯示，跟 iOS 一致
             if (pinnedTitle == null) {
                 NotificationBellButton(
@@ -476,6 +500,7 @@ private fun ActiveFilterBar(query: SearchQuery, sets: List<CardSetMeta>, onClear
         if (query.colors.isNotEmpty()) add(query.colors.joinToString("/") { it.label })
         if (query.types.isNotEmpty()) add(query.types.joinToString("/") { it.label })
         if (query.triggers.isNotEmpty()) add("判定×${query.triggers.size}")
+        if (query.sources.isNotEmpty()) add(query.sources.joinToString("/") { it.label })
         if (query.traits.isNotEmpty()) add(query.traits.sorted().joinToString("/"))
         if (query.ownership != OwnershipFilter.ALL) add(query.ownership.label)
     }
@@ -641,6 +666,98 @@ private fun CardGrid(
     ) {
         items(cards, key = { it.id }) { card ->
             CardTile(card, activeDeck, deckRepo, collectionIndex, networkPolicy, onboarding, onTap)
+        }
+    }
+}
+
+private fun catalogColorSwatch(color: CardColor): Color = when (color) {
+    CardColor.YELLOW -> Color(0xFFFFC107)
+    CardColor.GREEN -> Color(0xFF4CAF50)
+    CardColor.RED -> Color(0xFFF44336)
+    CardColor.BLUE -> Color(0xFF2196F3)
+}
+
+/** 搜尋結果的文字清單模式，對應 iOS 的 CardRowView：左側顏色色塊＋卡名／卡號，
+ *  有選定牌組時右側直接加減張數，不用切回格子模式才能加卡 */
+@Composable
+private fun CardList(
+    cards: List<Card>,
+    activeDeck: DeckWithEntries?,
+    deckRepo: DeckRepository,
+    onboarding: OnboardingState,
+    onTap: (Card) -> Unit,
+) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(cards, key = { it.id }) { card ->
+            CardListRow(card, activeDeck, deckRepo, onboarding, onTap)
+            HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+private fun CardListRow(
+    card: Card,
+    activeDeck: DeckWithEntries?,
+    deckRepo: DeckRepository,
+    onboarding: OnboardingState,
+    onTap: (Card) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val countInDeck = remember(activeDeck, card) {
+        activeDeck?.entries
+            ?.filter { entry -> card.printings.any { it.id == entry.printingId } }
+            ?.sumOf { it.count } ?: 0
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onTap(card) }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .width(4.dp)
+                .height(36.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(card.color?.let { catalogColorSwatch(it) } ?: Color.Gray),
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(card.nameZH, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            Row {
+                Text(
+                    card.id,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    buildString {
+                        card.level?.let { append("Lv$it ") }
+                        card.power?.let { append("$it") }
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (activeDeck != null) {
+            IconButton(
+                onClick = { scope.launch { deckRepo.adjust(activeDeck.deck.uuid, card.defaultPrinting.id, -1) } },
+                enabled = countInDeck > 0,
+                modifier = Modifier.size(32.dp),
+            ) { Icon(Icons.Filled.Remove, contentDescription = "減少", modifier = Modifier.size(16.dp)) }
+            Text("$countInDeck", style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.width(20.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            IconButton(
+                onClick = {
+                    scope.launch { deckRepo.adjust(activeDeck.deck.uuid, card.defaultPrinting.id, 1) }
+                    onboarding.notify(OnboardingStep.ADD_TO_DECK)
+                },
+                modifier = Modifier.size(32.dp),
+            ) { Icon(Icons.Filled.Add, contentDescription = "增加", modifier = Modifier.size(16.dp)) }
         }
     }
 }
@@ -879,6 +996,7 @@ private fun CardDetailContent(
                     card.power?.let { append("  攻擊力$it") }
                     card.soul?.let { append("  魂傷$it") }
                     card.trigger?.let { append("  判定${it.label}") }
+                    card.source?.let { append("  ${it.label}") }
                 },
                 style = MaterialTheme.typography.labelMedium,
             )

@@ -247,6 +247,7 @@ class CardRepository(private val context: Context) {
             if (query.triggers.isNotEmpty() && card.trigger !in query.triggers) return@filter false
             if (query.traits.isNotEmpty() &&
                 query.traits.none { it in card.traitsJP }) return@filter false
+            if (query.sources.isNotEmpty() && card.source !in query.sources) return@filter false
             if (keyword.isEmpty()) return@filter true
 
             // 卡號比對忽略大小寫與 / -（打 w139075 也要命中 BRD/W139-075）

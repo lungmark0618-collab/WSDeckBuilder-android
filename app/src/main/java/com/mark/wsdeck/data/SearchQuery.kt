@@ -8,14 +8,15 @@ data class SearchQuery(
     val types: Set<CardType> = emptySet(),
     val triggers: Set<TriggerIcon> = emptySet(),
     val traits: Set<String> = emptySet(),
+    val sources: Set<CardSource> = emptySet(),
     /** 作品篩選；null = 全部 */
     val titleCode: String? = null,
     val ownership: OwnershipFilter = OwnershipFilter.ALL,
 ) {
     val hasActiveFilters: Boolean
         get() = levels.isNotEmpty() || colors.isNotEmpty() || types.isNotEmpty() ||
-            triggers.isNotEmpty() || traits.isNotEmpty() || titleCode != null ||
-            ownership != OwnershipFilter.ALL
+            triggers.isNotEmpty() || traits.isNotEmpty() || sources.isNotEmpty() ||
+            titleCode != null || ownership != OwnershipFilter.ALL
 
     companion object {
         /** 卡號比對忽略大小寫與 `/` `-` */
