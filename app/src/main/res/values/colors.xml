@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App icon 背景色，取自 iOS 版圖示邊角的深紫色，兩邊圖示視覺一致 -->
+    <color name="ic_launcher_background">#2F2953</color>
+</resources>
