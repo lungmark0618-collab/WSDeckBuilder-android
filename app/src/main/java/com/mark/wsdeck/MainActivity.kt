@@ -3,6 +3,7 @@ package com.mark.wsdeck
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -29,6 +30,7 @@ import com.mark.wsdeck.data.DataUpdater
 import com.mark.wsdeck.data.DeckImageExporter
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.data.FavoriteTitlesStore
+import com.mark.wsdeck.data.ImageCacheOps
 import com.mark.wsdeck.data.PinnedDecksStore
 import com.mark.wsdeck.data.NewsCategoryFilterStore
 import com.mark.wsdeck.data.NetworkPolicy
@@ -71,6 +73,13 @@ class MainActivity : ComponentActivity() {
         val newsCategoryFilter = NewsCategoryFilterStore(applicationContext)
         val newsRepo = WSNewsRepository(applicationContext)
         val waveNameRepo = WaveNameRepository(applicationContext)
+        // App 存活期間都掛著：使用者選「僅用 Wi-Fi 時下載」排隊的那批，
+        // 一連回不受限的網路就自動接著下載，不用使用者自己想到要回來再點一次
+        networkPolicy.setPrefetchResumeHandler { printings ->
+            lifecycleScope.launch {
+                ImageCacheOps.prefetch(applicationContext, printings, networkPolicy) { _, _ -> }
+            }
+        }
         setContent {
             val appearanceUi by appearance.ui.collectAsStateWithLifecycle()
             AppTheme(appearanceUi) {

@@ -78,9 +78,11 @@ fun SettingsScreen(
         val targets = printingsFor(target)
         prefetchProgress = 0 to targets.size
         scope.launch {
-            ImageCacheOps.prefetch(context, targets, networkPolicy) { done, total ->
+            val remaining = ImageCacheOps.prefetch(context, targets, networkPolicy) { done, total ->
                 prefetchProgress = done to total
             }
+            // 下載到一半斷去 Wi-Fi 才會有剩的——排進佇列，等回到 Wi-Fi 自動接著載
+            if (remaining.isNotEmpty()) networkPolicy.queuePrefetchForWiFi(remaining)
             prefetchProgress = null
             refreshCacheInfo()
         }
@@ -124,6 +126,15 @@ fun SettingsScreen(
 
             HorizontalDivider()
             Text("卡表資料", style = MaterialTheme.typography.titleMedium)
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("收錄", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "${cardRepo.snapshot.sets.size} 部作品 · ${cardRepo.snapshot.cards.size} 張",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             when (val s = ui.state) {
                 is DataUpdater.State.Checking -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -358,7 +369,17 @@ fun SettingsScreen(
             onDismissRequest = { confirmPrefetch = null },
             title = { Text("目前使用行動網路") },
             text = {
-                Text("預先下載將消耗約 ${formatBytes(estimateSize(printingsFor(target)))} 流量")
+                Column {
+                    Text("預先下載將消耗約 ${formatBytes(estimateSize(printingsFor(target)))} 流量")
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(
+                        onClick = {
+                            confirmPrefetch = null
+                            networkPolicy.queuePrefetchForWiFi(printingsFor(target))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("僅用 Wi-Fi 時下載") }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {

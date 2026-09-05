@@ -67,6 +67,12 @@ class NetworkPolicy(context: Context) {
     private val prefs = Prefs(context)
     private val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
+    /** 使用者選「僅用 Wi-Fi 時下載」排進來的那批，等真的連回 Wi-Fi 才繼續。
+     *  對應 iOS ImageCache.pendingPrefetch——但 iOS 那邊只記錄，沒有真的接
+     *  網路狀態變化去繼續下載，這裡把「回到 Wi-Fi 自動接著載」補上。 */
+    private var pendingPrefetch: List<Printing> = emptyList()
+    private var onResumePrefetch: ((List<Printing>) -> Unit)? = null
+
     private val _ui = MutableStateFlow(
         UiState(
             mode = prefs.networkMode,
@@ -93,6 +99,16 @@ class NetworkPolicy(context: Context) {
         _ui.update { it.copy(mode = mode) }
     }
 
+    /** 行動網路下選「僅用 Wi-Fi 時下載」：先不下載，記起來等連回 Wi-Fi 再繼續 */
+    fun queuePrefetchForWiFi(printings: List<Printing>) {
+        pendingPrefetch = printings
+    }
+
+    /** App 啟動時掛一次：連回 Wi-Fi／不受限的網路時，若有排隊中的預載就繼續 */
+    fun setPrefetchResumeHandler(handler: (List<Printing>) -> Unit) {
+        onResumePrefetch = handler
+    }
+
     fun recordDownload(bytes: Int, viaExpensivePath: Boolean) {
         if (!viaExpensivePath) return
         val total = rolledOverBytes() + bytes
@@ -101,6 +117,7 @@ class NetworkPolicy(context: Context) {
     }
 
     private fun refreshFromActiveNetwork() {
+        val wasAllowed = _ui.value.allowsAutomaticDownload
         val network = cm?.activeNetwork
         val caps = network?.let { cm.getNetworkCapabilities(it) }
         val connected = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
@@ -110,6 +127,12 @@ class NetworkPolicy(context: Context) {
             ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
         _ui.update {
             it.copy(isConnected = connected, isExpensive = expensive, isConstrained = constrained)
+        }
+        // 剛從「不能自動下載」變成「可以」——如果有排隊中的預載，接著繼續
+        if (!wasAllowed && _ui.value.allowsAutomaticDownload && pendingPrefetch.isNotEmpty()) {
+            val queued = pendingPrefetch
+            pendingPrefetch = emptyList()
+            onResumePrefetch?.invoke(queued)
         }
     }
 
