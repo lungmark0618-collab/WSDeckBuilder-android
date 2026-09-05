@@ -4,15 +4,18 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -25,11 +28,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mark.wsdeck.data.CardColor
 import com.mark.wsdeck.data.CardRepository
 import com.mark.wsdeck.data.CardType
+import com.mark.wsdeck.data.DeckEntryEntity
 import com.mark.wsdeck.data.DeckImageExporter
 import com.mark.wsdeck.data.DeckImageImporter
 import com.mark.wsdeck.data.DeckImporter
@@ -64,9 +70,13 @@ fun DeckListScreen(
     var importError by remember { mutableStateOf<String?>(null) }
     var showQRScanner by remember { mutableStateOf(false) }
     var showPasteImport by remember { mutableStateOf(false) }
+    var renamingDeck by remember { mutableStateOf<DeckWithEntries?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
+    // 哪副牌組現在接圖鑑的加卡動作，對應 iOS 的 activeDeckUUID；讀取沒有訂閱機制，
+    // 每次這個畫面重新進場時取最新值就好，跟卡片詳情頁的用法一致
+    val activeDeckUuid = prefs.activeDeckUuid
 
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -209,8 +219,11 @@ fun DeckListScreen(
             ) {
                 itemsIndexed(decks, key = { _, d -> d.deck.uuid }) { index, d ->
                     DeckRow(
-                        d, cardRepo, networkPolicy, onClick = { onOpen(d.deck.uuid) },
+                        d, cardRepo, networkPolicy,
+                        isActive = d.deck.uuid == activeDeckUuid,
+                        onClick = { onOpen(d.deck.uuid) },
                         onDelete = { pendingDelete = d },
+                        onRename = { renamingDeck = d },
                         isPinned = pinnedDecks.isPinned(d.deck.uuid),
                         onTogglePin = {
                             pinnedDecks.toggle(d.deck.uuid)
@@ -236,6 +249,18 @@ fun DeckListScreen(
                 showCreate = false
             },
             onDismiss = { showCreate = false },
+        )
+    }
+
+    renamingDeck?.let { d ->
+        NameDialog(
+            title = "重新命名",
+            initial = d.deck.name,
+            onConfirm = { name ->
+                scope.launch { repo.renameDeck(d.deck, name.ifBlank { d.deck.name }) }
+                renamingDeck = null
+            },
+            onDismiss = { renamingDeck = null },
         )
     }
 
@@ -346,8 +371,10 @@ private fun DeckRow(
     d: DeckWithEntries,
     cardRepo: CardRepository,
     networkPolicy: NetworkPolicy,
+    isActive: Boolean,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    onRename: () -> Unit,
     isPinned: Boolean,
     onTogglePin: () -> Unit,
     pinAnchor: Modifier = Modifier,
@@ -357,59 +384,143 @@ private fun DeckRow(
     val isClimax = remember(cover) {
         cover?.let { p -> cardRepo.snapshot.cardById[p.id]?.cardType == CardType.CLIMAX } ?: false
     }
+    // 牌組主要作品（張數最多的），跨作品混搭時標示出來，一眼分辨這是哪副牌
+    val titleName = remember(d.entries) { titleName(d.entries, cardRepo) }
+    // 顏色比例條：跟圖鑑選片一樣，掃視就知道這副牌黃綠紅藍怎麼分配
+    val colorCounts = remember(d.entries) {
+        val counts = linkedMapOf<CardColor, Int>()
+        for (entry in d.entries) {
+            val color = cardRepo.snapshot.cardById[entry.printingId]?.color ?: continue
+            counts[color] = (counts[color] ?: 0) + entry.count
+        }
+        counts
+    }
 
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(16.dp).fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (cover != null) {
-                PolicyGatedCardImage(
-                    url = cover.imageURL,
-                    contentDescription = null,
-                    networkPolicy = networkPolicy,
-                    modifier = Modifier
-                        .width(if (isClimax) 74.dp else 52.dp)
-                        .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)
-                        .clip(RoundedCornerShape(6.dp)),
-                )
-            } else {
-                Box(
-                    Modifier
-                        .width(52.dp)
-                        .aspectRatio(63f / 88f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.Style, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().then(
+            if (isActive) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium)
+            else Modifier,
+        ),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (cover != null) {
+                    PolicyGatedCardImage(
+                        url = cover.imageURL,
+                        contentDescription = null,
+                        networkPolicy = networkPolicy,
+                        modifier = Modifier
+                            .width(if (isClimax) 74.dp else 52.dp)
+                            .aspectRatio(if (isClimax) 88f / 63f else 63f / 88f)
+                            .clip(RoundedCornerShape(6.dp)),
+                    )
+                } else {
+                    Box(
+                        Modifier
+                            .width(52.dp)
+                            .aspectRatio(63f / 88f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.Style, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(d.deck.name, style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        if (isActive) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "編輯中",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                    .padding(horizontal = 7.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                    if (titleName != null) {
+                        Text(titleName, style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    }
+                    Text(
+                        "${d.totalCount}/50",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (d.totalCount == 50) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // 常用牌組手動釘選到首頁，不是自動依使用頻率排序——「順手」由使用者自己決定
+                IconButton(onClick = onTogglePin, modifier = pinAnchor) {
+                    Icon(
+                        if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                        contentDescription = if (isPinned) "取消釘選首頁" else "釘選到首頁",
+                        tint = if (isPinned) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onRename) {
+                    Icon(Icons.Filled.Edit, contentDescription = "重新命名")
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = "刪除")
                 }
             }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(d.deck.name, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "${d.totalCount}/50",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (d.totalCount == 50) MaterialTheme.colorScheme.primary
-                           else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            // 常用牌組手動釘選到首頁，不是自動依使用頻率排序——「順手」由使用者自己決定
-            IconButton(onClick = onTogglePin, modifier = pinAnchor) {
-                Icon(
-                    if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                    contentDescription = if (isPinned) "取消釘選首頁" else "釘選到首頁",
-                    tint = if (isPinned) MaterialTheme.colorScheme.primary
-                           else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "刪除")
+            if (colorCounts.isNotEmpty()) {
+                DeckColorBar(colorCounts, total = 50, modifier = Modifier.padding(top = 8.dp))
             }
         }
     }
+}
+
+/** 顏色比例條：底槽代表 50 張的滿額，填色的部分才是目前放的卡 */
+@Composable
+private fun DeckColorBar(counts: Map<CardColor, Int>, total: Int, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(5.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        for (color in CardColor.entries) {
+            val count = counts[color] ?: continue
+            Box(
+                Modifier
+                    .weight(count.toFloat() / total)
+                    .fillMaxHeight()
+                    .background(deckColorSwatch(color)),
+            )
+        }
+    }
+}
+
+private fun deckColorSwatch(color: CardColor): Color = when (color) {
+    CardColor.YELLOW -> Color(0xFFFFC107)
+    CardColor.GREEN -> Color(0xFF4CAF50)
+    CardColor.RED -> Color(0xFFF44336)
+    CardColor.BLUE -> Color(0xFF2196F3)
+}
+
+/** 牌組主要作品（張數最多的），對應 iOS DeckListView.titleName(for:) */
+private fun titleName(entries: List<DeckEntryEntity>, cardRepo: CardRepository): String? {
+    val counts = linkedMapOf<String, Int>()
+    for (entry in entries) {
+        val card = cardRepo.snapshot.cardById[entry.printingId] ?: continue
+        val code = cardRepo.snapshot.titleByCardId[card.id] ?: continue
+        counts[code] = (counts[code] ?: 0) + entry.count
+    }
+    if (counts.isEmpty()) return null
+    val top = counts.entries.maxByOrNull { it.value }?.key ?: return null
+    val name = cardRepo.snapshot.sets.firstOrNull { it.titleCode == top }?.titleNameZH ?: return null
+    // 跨作品混搭時標示出來，免得以為只有一個系列
+    return if (counts.size > 1) "$name 等 ${counts.size} 個作品" else name
 }
 
 @Composable
