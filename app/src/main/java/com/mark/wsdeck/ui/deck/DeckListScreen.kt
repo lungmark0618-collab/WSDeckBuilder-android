@@ -13,10 +13,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PostAdd
@@ -224,6 +226,7 @@ fun DeckListScreen(
                         onClick = { onOpen(d.deck.uuid) },
                         onDelete = { pendingDelete = d },
                         onRename = { renamingDeck = d },
+                        onDuplicate = { scope.launch { repo.duplicateDeck(d) } },
                         isPinned = pinnedDecks.isPinned(d.deck.uuid),
                         onTogglePin = {
                             pinnedDecks.toggle(d.deck.uuid)
@@ -375,10 +378,12 @@ private fun DeckRow(
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onRename: () -> Unit,
+    onDuplicate: () -> Unit,
     isPinned: Boolean,
     onTogglePin: () -> Unit,
     pinAnchor: Modifier = Modifier,
 ) {
+    var showMenu by remember { mutableStateOf(false) }
     // 使用者指定的封面優先，否則自動取等級最高的一張（可在牌組詳情頁「選擇封面」調整）
     val cover = remember(d) { d.coverPrinting(cardRepo) }
     val isClimax = remember(cover) {
@@ -465,11 +470,27 @@ private fun DeckRow(
                                else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(onClick = onRename) {
-                    Icon(Icons.Filled.Edit, contentDescription = "重新命名")
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "刪除")
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "更多")
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("重新命名") },
+                            leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                            onClick = { showMenu = false; onRename() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("複製牌組") },
+                            leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
+                            onClick = { showMenu = false; onDuplicate() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("刪除") },
+                            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                            onClick = { showMenu = false; onDelete() },
+                        )
+                    }
                 }
             }
             if (colorCounts.isNotEmpty()) {

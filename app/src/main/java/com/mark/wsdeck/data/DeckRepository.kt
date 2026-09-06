@@ -22,6 +22,22 @@ class DeckRepository(context: Context) {
 
     suspend fun deleteDeck(uuid: String) = dao.deleteDeck(uuid)
 
+    /** 複製整副牌（含每張卡張數、排序、封面），新牌組名稱加「的副本」，不影響原牌組 */
+    suspend fun duplicateDeck(source: DeckWithEntries): String {
+        val copy = DeckEntity(
+            name = "${source.deck.name}的副本",
+            coverPrintingId = source.deck.coverPrintingId,
+            cardOrder = source.deck.cardOrder,
+        )
+        dao.insertDeck(copy)
+        for (entry in source.entries) {
+            dao.insertEntry(DeckEntryEntity(
+                deckUuid = copy.uuid, printingId = entry.printingId, count = entry.count,
+            ))
+        }
+        return copy.uuid
+    }
+
     suspend fun renameDeck(deck: DeckEntity, name: String) {
         dao.updateDeck(deck.copy(name = name, updatedAt = System.currentTimeMillis()))
     }
