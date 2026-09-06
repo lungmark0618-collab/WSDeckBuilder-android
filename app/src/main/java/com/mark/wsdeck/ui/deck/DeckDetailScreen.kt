@@ -251,6 +251,9 @@ fun DeckDetailScreen(
                     usesGrid = usesGrid,
                     networkPolicy = networkPolicy,
                     onReorderSection = ::reorderSection,
+                    onSetCover = { printingId ->
+                        scope.launch { deckRepo.setCover(deck.deck, printingId) }
+                    },
                     onAdjust = { printingId, delta ->
                         scope.launch { deckRepo.adjust(uuid, printingId, delta) }
                     },

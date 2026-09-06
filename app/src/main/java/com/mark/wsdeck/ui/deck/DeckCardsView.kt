@@ -1,7 +1,9 @@
 package com.mark.wsdeck.ui.deck
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,6 +49,7 @@ fun DeckCardsTab(
     networkPolicy: NetworkPolicy,
     editable: Boolean = true,
     onReorderSection: (List<CardCount>) -> Unit = {},
+    onSetCover: (String) -> Unit = {},
     onAdjust: (printingId: String, delta: Int) -> Unit,
 ) {
     val sections = remember(items) { buildLevelSections(items) }
@@ -57,7 +61,7 @@ fun DeckCardsTab(
         return
     }
     if (usesGrid) {
-        DeckCardGrid(deck, sections, editable, networkPolicy, onAdjust)
+        DeckCardGrid(deck, sections, editable, networkPolicy, onSetCover, onAdjust)
     } else {
         DeckCardList(deck, sections, items, editable, networkPolicy, onReorderSection, onAdjust)
     }
@@ -312,6 +316,7 @@ private fun DeckCardGrid(
     sections: List<LevelSection>,
     editable: Boolean,
     networkPolicy: NetworkPolicy,
+    onSetCover: (String) -> Unit,
     onAdjust: (String, Int) -> Unit,
 ) {
     val entryByPrinting = remember(deck.entries) { deck.entries.associate { it.printingId to it.count } }
@@ -327,7 +332,13 @@ private fun DeckCardGrid(
                 if (tiles.isEmpty()) return@item
                 // 巢狀 LazyVerticalGrid 用固定高度換算，格數依畫面寬度粗抓 3~4 欄
                 FlowGrid(tiles) { card, printing ->
-                    DeckGridTile(card, printing, entryByPrinting[printing.id] ?: 0, editable, networkPolicy, onAdjust)
+                    DeckGridTile(
+                        card, printing, entryByPrinting[printing.id] ?: 0, editable, networkPolicy,
+                        isCover = deck.deck.coverPrintingId == printing.id,
+                        hasCustomCover = deck.deck.coverPrintingId.isNotEmpty(),
+                        onSetCover = onSetCover,
+                        onAdjust = onAdjust,
+                    )
                 }
             }
         }
@@ -356,6 +367,7 @@ private fun FlowGrid(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DeckGridTile(
     card: Card,
@@ -363,8 +375,13 @@ private fun DeckGridTile(
     count: Int,
     editable: Boolean,
     networkPolicy: NetworkPolicy,
+    isCover: Boolean,
+    hasCustomCover: Boolean,
+    onSetCover: (String) -> Unit,
     onAdjust: (String, Int) -> Unit,
 ) {
+    // 長按格子設為牌組封面／恢復自動封面，對應 iOS 圖片格線的 .contextMenu
+    var showMenu by remember { mutableStateOf(false) }
     Column {
         Box {
             PolicyGatedCardImage(
@@ -374,8 +391,21 @@ private fun DeckGridTile(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(63f / 88f)
-                    .clip(RoundedCornerShape(6.dp)),
+                    .clip(RoundedCornerShape(6.dp))
+                    .combinedClickable(onClick = {}, onLongClick = { showMenu = true }),
             )
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("設為牌組封面") },
+                    onClick = { showMenu = false; onSetCover(printing.id) },
+                )
+                if (hasCustomCover) {
+                    DropdownMenuItem(
+                        text = { Text("恢復自動封面") },
+                        onClick = { showMenu = false; onSetCover("") },
+                    )
+                }
+            }
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
@@ -387,6 +417,24 @@ private fun DeckGridTile(
             ) {
                 Text("$count", color = MaterialTheme.colorScheme.onPrimary,
                     style = MaterialTheme.typography.labelSmall)
+            }
+            if (isCover) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(4.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.secondary),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = "目前封面",
+                        tint = MaterialTheme.colorScheme.onSecondary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
             }
         }
         Text(
