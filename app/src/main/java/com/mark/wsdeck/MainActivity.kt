@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -32,6 +33,7 @@ import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.data.FavoriteTitlesStore
 import com.mark.wsdeck.data.ImageCacheOps
 import com.mark.wsdeck.data.PinnedDecksStore
+import com.mark.wsdeck.data.Prefs
 import com.mark.wsdeck.data.NewsCategoryFilterStore
 import com.mark.wsdeck.data.NetworkPolicy
 import com.mark.wsdeck.data.OnboardingState
@@ -276,6 +278,9 @@ private fun MainScaffold(
     // 整個 App 共用同一個浮動聊天視窗狀態，不分頁面，對應 iOS 掛在
     // WSDeckBuilderApp 根層的 AIChatCoordinator
     val aiChat = remember { AIChatState() }
+    val context = LocalContext.current
+    val prefs = remember { Prefs(context) }
+    var aiChatButtonEnabled by remember { mutableStateOf(prefs.aiChatButtonEnabled) }
 
     // 每一步該在哪個分頁，教學自己切過去——不然從「設定」按幫助重新開始教學，
     // 第一步「搜尋卡片」會卡在設定頁，找不到搜尋列，對應 iOS RootTabView 同段邏輯
@@ -336,7 +341,14 @@ private fun MainScaffold(
                 DeckDetailScreen(uuid, cardRepo, deckRepo, collectionRepo, networkPolicy) { navController.popBackStack() }
             }
             composable(Tab.Settings.route) {
-                SettingsScreen(cardRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding) {
+                SettingsScreen(
+                    cardRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding,
+                    aiChatButtonEnabled = aiChatButtonEnabled,
+                    onSetAiChatButtonEnabled = { enabled ->
+                        aiChatButtonEnabled = enabled
+                        prefs.aiChatButtonEnabled = enabled
+                    },
+                ) {
                     navController.navigate("settings/appearance")
                 }
             }
@@ -346,7 +358,7 @@ private fun MainScaffold(
         }
     }
         OnboardingOverlay(onboarding)
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
+        if (aiChatButtonEnabled) {
             FloatingChatButton { aiChat.openGeneral() }
         }
         if (aiChat.isPresented) {

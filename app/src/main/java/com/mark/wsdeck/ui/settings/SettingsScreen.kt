@@ -45,6 +45,8 @@ fun SettingsScreen(
     appearance: AppearanceSettings,
     networkPolicy: NetworkPolicy,
     onboarding: OnboardingState,
+    aiChatButtonEnabled: Boolean,
+    onSetAiChatButtonEnabled: (Boolean) -> Unit,
     onOpenAppearance: () -> Unit,
 ) {
     val ui by updater.ui.collectAsStateWithLifecycle()
@@ -120,6 +122,18 @@ fun SettingsScreen(
             }
             Text(
                 "字體大小與粗細、文字與背景顏色、強調色。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            HorizontalDivider()
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("顯示「問 AI」浮動按鈕", style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f))
+                Switch(checked = aiChatButtonEnabled, onCheckedChange = onSetAiChatButtonEnabled)
+            }
+            Text(
+                "可以拖到畫面任何位置；放著不動一段時間會自動收到畫面邊緣，不擋畫面。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

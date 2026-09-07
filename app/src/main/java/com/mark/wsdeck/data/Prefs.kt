@@ -25,6 +25,11 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_CATALOG_USES_GRID, true)
         set(value) = prefs.edit().putBoolean(KEY_CATALOG_USES_GRID, value).apply()
 
+    /** 「問 AI」浮動按鈕開關，對應 iOS 的 @AppStorage("aiChatButtonEnabled") */
+    var aiChatButtonEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AI_CHAT_BUTTON_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_AI_CHAT_BUTTON_ENABLED, value).apply()
+
     /** 上次靜默檢查卡表更新的時間（epoch ms），對應 iOS 的 lastCheckedAt */
     var cardDataLastCheckedAt: Long
         get() = prefs.getLong(KEY_CARD_DATA_CHECKED_AT, 0L)
@@ -159,6 +164,7 @@ class Prefs(context: Context) {
         private const val KEY_ACTIVE_DECK = "active_deck_uuid"
         private const val KEY_DECK_USES_GRID = "deck_uses_grid"
         private const val KEY_CATALOG_USES_GRID = "catalog_uses_grid"
+        private const val KEY_AI_CHAT_BUTTON_ENABLED = "ai_chat_button_enabled"
         private const val KEY_CARD_DATA_CHECKED_AT = "card_data_last_checked_at"
         private const val KEY_ANNOUNCEMENT_READ_IDS = "announcement_read_ids"
         private const val KEY_ANNOUNCEMENT_DELETED_IDS = "announcement_deleted_ids"
