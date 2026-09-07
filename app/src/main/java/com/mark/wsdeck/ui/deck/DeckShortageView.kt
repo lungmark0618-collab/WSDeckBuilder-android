@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ fun DeckShortageTab(
     onAdjust: (printingId: String, delta: Int) -> Unit,
     onFill: (CollectionStore.Shortage) -> Unit,
     onFillAll: () -> Unit,
+    onExport: () -> Unit,
 ) {
     val shortagesOnly = remember(items) { items.filter { it.missing > 0 } }
     val visible = if (showCollected) items else shortagesOnly
@@ -52,6 +54,9 @@ fun DeckShortageTab(
             }
             if (shortagesOnly.isNotEmpty()) {
                 TextButton(onClick = onFillAll) { Text("全部收齊") }
+            }
+            IconButton(onClick = onExport) {
+                Icon(Icons.Filled.Share, contentDescription = "匯出缺卡清單")
             }
         }
         HorizontalDivider()

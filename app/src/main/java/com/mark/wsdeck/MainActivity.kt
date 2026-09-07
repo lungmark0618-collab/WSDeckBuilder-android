@@ -38,6 +38,9 @@ import com.mark.wsdeck.data.OnboardingState
 import com.mark.wsdeck.data.OnboardingTab
 import com.mark.wsdeck.data.WSNewsRepository
 import com.mark.wsdeck.data.WaveNameRepository
+import com.mark.wsdeck.ui.ai.AIChatDialog
+import com.mark.wsdeck.ui.ai.AIChatState
+import com.mark.wsdeck.ui.ai.FloatingChatButton
 import com.mark.wsdeck.ui.browser.CatalogScreen
 import com.mark.wsdeck.ui.deck.DeckDetailScreen
 import com.mark.wsdeck.ui.deck.DeckListScreen
@@ -270,6 +273,9 @@ private fun MainScaffold(
     newsRepo: WSNewsRepository,
 ) {
     val navController = rememberNavController()
+    // 整個 App 共用同一個浮動聊天視窗狀態，不分頁面，對應 iOS 掛在
+    // WSDeckBuilderApp 根層的 AIChatCoordinator
+    val aiChat = remember { AIChatState() }
 
     // 每一步該在哪個分頁，教學自己切過去——不然從「設定」按幫助重新開始教學，
     // 第一步「搜尋卡片」會卡在設定頁，找不到搜尋列，對應 iOS RootTabView 同段邏輯
@@ -320,7 +326,7 @@ private fun MainScaffold(
                 }
             }
             composable(Tab.Catalog.route) {
-                CatalogScreen(cardRepo, deckRepo, collectionRepo, announcements, appearance, networkPolicy, onboarding, favorites)
+                CatalogScreen(cardRepo, deckRepo, collectionRepo, announcements, appearance, networkPolicy, onboarding, favorites, aiChat)
             }
             composable(Tab.Decks.route) {
                 DeckListScreen(cardRepo, deckRepo, networkPolicy, onboarding, pinnedDecks) { uuid -> navController.navigate("deck/$uuid") }
@@ -340,5 +346,11 @@ private fun MainScaffold(
         }
     }
         OnboardingOverlay(onboarding)
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
+            FloatingChatButton { aiChat.openGeneral() }
+        }
+        if (aiChat.isPresented) {
+            AIChatDialog(aiChat) { aiChat.isPresented = false }
+        }
     }
 }

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -53,6 +54,8 @@ fun DeckDetailScreen(
     var mode by remember { mutableStateOf(Mode.CARDS) }
     var showRename by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    // 分享是高頻操作，獨立成工具列按鈕，不用再點進「⋮」選單（§ PRD 分享按鈕）
+    var showShareOptions by remember { mutableStateOf(false) }
     var showCoverPicker by remember { mutableStateOf(false) }
     var showQRPresent by remember { mutableStateOf(false) }
     var isExporting by remember { mutableStateOf(false) }
@@ -181,14 +184,20 @@ fun DeckDetailScreen(
                             )
                         }
                     }
+                    // 分享是高頻操作，獨立按鈕不用再點進「⋮」選單
+                    IconButton(onClick = { showShareOptions = true }, enabled = items.isNotEmpty()) {
+                        if (isExporting) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Filled.Share, contentDescription = "分享")
+                        }
+                    }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
-                            if (isExporting) {
-                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Filled.MoreVert, contentDescription = "更多")
-                            }
+                            Icon(Icons.Filled.MoreVert, contentDescription = "更多")
                         }
+                        // 出示 QR／匯出牌組圖片已搬到「分享」按鈕；匯出缺卡清單搬到「缺卡」
+                        // 分頁自己的按鈕；JSON 備份先暫時下架，等備份機制重新設計後再放回來
                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                             DropdownMenuItem(text = { Text("重新命名") }, onClick = {
                                 showMenu = false; showRename = true
@@ -196,16 +205,6 @@ fun DeckDetailScreen(
                             DropdownMenuItem(
                                 text = { Text("選擇封面") },
                                 onClick = { showMenu = false; showCoverPicker = true },
-                                enabled = items.isNotEmpty(),
-                            )
-                            DropdownMenuItem(
-                                text = { Text("出示 QR 給朋友掃") },
-                                onClick = { showMenu = false; showQRPresent = true },
-                                enabled = items.isNotEmpty(),
-                            )
-                            DropdownMenuItem(
-                                text = { Text("匯出牌組圖片（可掃回）") },
-                                onClick = ::exportImage,
                                 enabled = items.isNotEmpty(),
                             )
                             DropdownMenuItem(
@@ -217,15 +216,6 @@ fun DeckDetailScreen(
                                 text = { Text("匯出收牌清單（含刷版）") },
                                 onClick = ::exportCollectorText,
                                 enabled = items.isNotEmpty(),
-                            )
-                            DropdownMenuItem(
-                                text = { Text("匯出 JSON 備份（可再匯入）") },
-                                onClick = ::exportJson,
-                                enabled = items.isNotEmpty(),
-                            )
-                            DropdownMenuItem(
-                                text = { Text("匯出缺卡清單") },
-                                onClick = ::exportShortages,
                             )
                         }
                     }
@@ -277,6 +267,7 @@ fun DeckDetailScreen(
                             }
                         }
                     },
+                    onExport = ::exportShortages,
                 )
             }
         }
@@ -300,6 +291,27 @@ fun DeckDetailScreen(
 
     if (showQRPresent) {
         DeckQRPresentDialog(deckName = deck.deck.name, entries = deck.entries) { showQRPresent = false }
+    }
+
+    if (showShareOptions) {
+        ModalBottomSheet(onDismissRequest = { showShareOptions = false }) {
+            Column(Modifier.padding(bottom = 24.dp)) {
+                ListItem(
+                    headlineContent = { Text("生成 QR Code") },
+                    modifier = Modifier.clickable {
+                        showShareOptions = false
+                        showQRPresent = true
+                    },
+                )
+                ListItem(
+                    headlineContent = { Text("匯出牌組圖片（可掃回）") },
+                    modifier = Modifier.clickable {
+                        showShareOptions = false
+                        exportImage()
+                    },
+                )
+            }
+        }
     }
 }
 

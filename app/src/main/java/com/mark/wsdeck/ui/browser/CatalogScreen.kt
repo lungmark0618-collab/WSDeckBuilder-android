@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
@@ -70,6 +71,7 @@ fun CatalogScreen(
     networkPolicy: NetworkPolicy,
     onboarding: OnboardingState,
     favorites: FavoriteTitlesStore,
+    aiChat: com.mark.wsdeck.ui.ai.AIChatState,
 ) {
     var query by remember { mutableStateOf(SearchQuery()) }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
@@ -210,8 +212,8 @@ fun CatalogScreen(
 
     detail?.let { card ->
         CardDetailSheet(
-            card, results, repo, collectionIndex, collectionRepo, networkPolicy, appearance,
-            activeDeck, deckRepo,
+            card, results, repo, networkPolicy, appearance,
+            activeDeck, deckRepo, aiChat,
             onSelectRelated = { detail = it },
             onDismiss = { detail = null },
         )
@@ -874,12 +876,11 @@ private fun CardDetailSheet(
     card: Card,
     siblings: List<Card>,
     repo: CardRepository,
-    collectionIndex: Map<String, Int>,
-    collectionRepo: CollectionRepository,
     networkPolicy: NetworkPolicy,
     appearance: AppearanceSettings,
     activeDeck: DeckWithEntries?,
     deckRepo: DeckRepository,
+    aiChat: com.mark.wsdeck.ui.ai.AIChatState,
     onSelectRelated: (Card) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -891,17 +892,23 @@ private fun CardDetailSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column {
-            if (pages.size > 1) {
-                Row(
-                    Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // 問這張卡的效果／規則——帶目前這一頁（左右滑動中）的卡片資料
+                IconButton(onClick = { aiChat.open(pages[pagerState.currentPage]) }) {
+                    Icon(Icons.Filled.AutoAwesome, contentDescription = "問 AI 這張卡")
+                }
+                Spacer(Modifier.weight(1f))
+                if (pages.size > 1) {
                     Text(
                         "${pagerState.currentPage + 1} / ${pages.size}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.width(48.dp))
                 }
             }
             HorizontalPager(
@@ -911,8 +918,6 @@ private fun CardDetailSheet(
                 CardDetailContent(
                     card = pages[pageIndex],
                     repo = repo,
-                    collectionIndex = collectionIndex,
-                    collectionRepo = collectionRepo,
                     networkPolicy = networkPolicy,
                     appearance = appearance,
                     activeDeck = activeDeck,
@@ -928,8 +933,6 @@ private fun CardDetailSheet(
 private fun CardDetailContent(
     card: Card,
     repo: CardRepository,
-    collectionIndex: Map<String, Int>,
-    collectionRepo: CollectionRepository,
     networkPolicy: NetworkPolicy,
     appearance: AppearanceSettings,
     activeDeck: DeckWithEntries?,
@@ -1023,10 +1026,6 @@ private fun CardDetailContent(
                 HorizontalDivider()
                 RelationsSection(relations, networkPolicy, onSelectRelated)
             }
-            HorizontalDivider()
-            CollectionControls(card, collectionIndex) { printingId, delta ->
-                scope.launch { collectionRepo.adjust(printingId, delta) }
-            }
             if (activeDeck != null) {
                 HorizontalDivider()
                 DeckControls(card, activeDeck) { printingId, delta ->
@@ -1117,49 +1116,6 @@ private fun DeckControls(
                 color = if (total > DeckValidator.NAME_LIMIT) MaterialTheme.colorScheme.error
                        else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-/** 我的收藏：實際擁有幾張，依刷版分開記（對應 iOS CardDetailSheet 的 collectionControls） */
-@Composable
-private fun CollectionControls(
-    card: Card,
-    collectionIndex: Map<String, Int>,
-    onAdjust: (printingId: String, delta: Int) -> Unit,
-) {
-    val total = remember(collectionIndex, card) { CollectionStore.owned(card, collectionIndex) }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Inventory2, contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("我的收藏", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (total > 0) {
-                Text("共 $total 張", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        card.printings.forEach { printing ->
-            val owned = collectionIndex[printing.id] ?: 0
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(printing.rarity, style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.width(48.dp))
-                Text(
-                    printing.id,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                CountStepper(owned) { delta -> onAdjust(printing.id, delta) }
-            }
         }
     }
 }
