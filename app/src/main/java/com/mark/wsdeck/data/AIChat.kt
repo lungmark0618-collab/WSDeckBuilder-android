@@ -2,6 +2,14 @@ package com.mark.wsdeck.data
 
 import android.content.Context
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /** 一句對話，使用者問的或 AI 答的（對應 iOS 的 AIChatMessage） */
 data class AIChatMessage(
@@ -63,6 +71,78 @@ class MockAIAssistantService : AIAssistantService {
         cardContext?.card?.let { reply += "\n\n目前情境卡片：${it.nameZH}" }
         if (rulesContext != null) reply += "\n（已帶入規則資料）"
         return reply
+    }
+}
+
+/** 使用者還沒到「設定」頁填代理伺服器網址時的替身，直接回一個引導訊息，
+ *  不會真的發網路請求 */
+class UnconfiguredAIAssistantService : AIAssistantService {
+    override suspend fun ask(
+        question: String,
+        history: List<AIChatMessage>,
+        cardContext: AICardContext?,
+        rulesContext: String?,
+    ): String = "尚未設定 AI 服務。請到「設定 → AI 服務設定」填入代理伺服器的網址與密鑰後再試一次。"
+}
+
+@Serializable
+private data class AskRequestTurn(val role: String, val text: String)
+
+@Serializable
+private data class AskRequestBody(
+    val question: String,
+    val history: List<AskRequestTurn>,
+    val cardContext: String? = null,
+    val rulesContext: String? = null,
+)
+
+@Serializable
+private data class AskResponseBody(val answer: String? = null, val error: String? = null)
+
+/** 呼叫自架的輕量代理伺服器（見 ai-proxy/），伺服器再轉打 OpenAI，
+ *  App 本身不帶 OpenAI Key，只帶一組共用密鑰擋住隨便打進來的請求 */
+class RemoteAIAssistantService(
+    private val baseUrl: String,
+    private val sharedSecret: String,
+) : AIAssistantService {
+    private val client = OkHttpClient()
+
+    override suspend fun ask(
+        question: String,
+        history: List<AIChatMessage>,
+        cardContext: AICardContext?,
+        rulesContext: String?,
+    ): String = withContext(Dispatchers.IO) {
+        val turns = history.map {
+            AskRequestTurn(if (it.role == AIChatMessage.Role.ASSISTANT) "assistant" else "user", it.text)
+        }
+        val payload = AskRequestBody(question, turns, cardContext?.summary, rulesContext)
+        val body = cardJson.encodeToString(payload).toRequestBody("application/json".toMediaType())
+        val url = baseUrl.trimEnd('/') + "/ask"
+        val requestBuilder = Request.Builder().url(url).post(body)
+        if (sharedSecret.isNotEmpty()) {
+            requestBuilder.addHeader("X-App-Secret", sharedSecret)
+        }
+        client.newCall(requestBuilder.build()).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw java.io.IOException("AI 代理伺服器錯誤（${response.code}）：$text")
+            }
+            val decoded = cardJson.decodeFromString<AskResponseBody>(text)
+            if (decoded.error != null) throw java.io.IOException(decoded.error)
+            decoded.answer.orEmpty()
+        }
+    }
+}
+
+/** 依「設定」頁目前存的代理伺服器網址／密鑰，決定要用真的服務還是引導訊息，
+ *  每次問答都重新讀一次，設定改了不用重開 App */
+object AIAssistantServiceResolver {
+    fun current(context: Context): AIAssistantService {
+        val prefs = Prefs(context)
+        val url = prefs.aiProxyUrl.trim()
+        if (url.isEmpty()) return UnconfiguredAIAssistantService()
+        return RemoteAIAssistantService(url, prefs.aiProxySharedSecret)
     }
 }
 

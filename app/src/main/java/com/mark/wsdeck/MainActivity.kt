@@ -281,6 +281,8 @@ private fun MainScaffold(
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
     var aiChatButtonEnabled by remember { mutableStateOf(prefs.aiChatButtonEnabled) }
+    var aiProxyUrl by remember { mutableStateOf(prefs.aiProxyUrl) }
+    var aiProxySharedSecret by remember { mutableStateOf(prefs.aiProxySharedSecret) }
 
     // 每一步該在哪個分頁，教學自己切過去——不然從「設定」按幫助重新開始教學，
     // 第一步「搜尋卡片」會卡在設定頁，找不到搜尋列，對應 iOS RootTabView 同段邏輯
@@ -347,6 +349,16 @@ private fun MainScaffold(
                     onSetAiChatButtonEnabled = { enabled ->
                         aiChatButtonEnabled = enabled
                         prefs.aiChatButtonEnabled = enabled
+                    },
+                    aiProxyUrl = aiProxyUrl,
+                    onSetAiProxyUrl = { value ->
+                        aiProxyUrl = value
+                        prefs.aiProxyUrl = value
+                    },
+                    aiProxySharedSecret = aiProxySharedSecret,
+                    onSetAiProxySharedSecret = { value ->
+                        aiProxySharedSecret = value
+                        prefs.aiProxySharedSecret = value
                     },
                 ) {
                     navController.navigate("settings/appearance")

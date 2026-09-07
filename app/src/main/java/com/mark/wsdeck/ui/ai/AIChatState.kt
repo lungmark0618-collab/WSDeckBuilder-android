@@ -6,10 +6,10 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.mark.wsdeck.data.AIAssistantService
+import com.mark.wsdeck.data.AIAssistantServiceResolver
 import com.mark.wsdeck.data.AICardContext
 import com.mark.wsdeck.data.AIChatMessage
 import com.mark.wsdeck.data.Card
-import com.mark.wsdeck.data.MockAIAssistantService
 import com.mark.wsdeck.data.RulesReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
  * 帶規則資料（規則問答跟卡牌問答用同一個輸入框，不用使用者自己切模式），
  * 對應 iOS 的 AIChatCoordinator
  */
-class AIChatState(private val service: AIAssistantService = MockAIAssistantService()) {
+class AIChatState(private val fixedService: AIAssistantService? = null) {
     var isPresented by mutableStateOf(false)
     val messages = mutableStateListOf<AIChatMessage>()
     var draftText by mutableStateOf("")
@@ -59,6 +59,7 @@ class AIChatState(private val service: AIAssistantService = MockAIAssistantServi
         val history = messages.dropLast(2)
         val card = cardContext
         val rules = RulesReference.text(context)
+        val service = fixedService ?: AIAssistantServiceResolver.current(context)
 
         scope.launch {
             val reply = try {
