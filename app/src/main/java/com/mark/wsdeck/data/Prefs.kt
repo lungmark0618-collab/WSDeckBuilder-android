@@ -30,14 +30,15 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_AI_CHAT_BUTTON_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_AI_CHAT_BUTTON_ENABLED, value).apply()
 
-    /** AI 代理伺服器（ai-proxy/）網址，對應 iOS 的 @AppStorage("aiProxyURL") */
+    /** AI 代理伺服器（ai-proxy/）網址，對應 iOS 的 @AppStorage("aiProxyURL")；
+     *  預設就是內建的代理伺服器，不用使用者自己填 */
     var aiProxyUrl: String
-        get() = prefs.getString(KEY_AI_PROXY_URL, "") ?: ""
+        get() = prefs.getString(KEY_AI_PROXY_URL, AIProxyDefaults.URL) ?: AIProxyDefaults.URL
         set(value) = prefs.edit().putString(KEY_AI_PROXY_URL, value).apply()
 
     /** AI 代理伺服器共用密鑰，對應 iOS 的 @AppStorage("aiProxySharedSecret") */
     var aiProxySharedSecret: String
-        get() = prefs.getString(KEY_AI_PROXY_SECRET, "") ?: ""
+        get() = prefs.getString(KEY_AI_PROXY_SECRET, AIProxyDefaults.SHARED_SECRET) ?: AIProxyDefaults.SHARED_SECRET
         set(value) = prefs.edit().putString(KEY_AI_PROXY_SECRET, value).apply()
 
     /** 上次靜默檢查卡表更新的時間（epoch ms），對應 iOS 的 lastCheckedAt */

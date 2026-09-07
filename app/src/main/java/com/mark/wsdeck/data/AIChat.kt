@@ -74,6 +74,19 @@ class MockAIAssistantService : AIAssistantService {
     }
 }
 
+/** 內建的代理伺服器預設值——App 出貨就能直接用，不用使用者自己跑去設定頁
+ *  填網址／密鑰；設定頁的欄位還在，之後要換伺服器或密鑰再改就好，
+ *  對應 iOS 的 AIProxyDefaults */
+object AIProxyDefaults {
+    const val URL = "https://wsdeck-ai-proxy.marklung0618.workers.dev"
+
+    // 真正的密鑰不寫進 public repo：這裡故意放假值。本機建置前把下面這行
+    // 換成 `wrangler secret put APP_SHARED_SECRET` 時設定的那組真正的值，
+    // 建置完再改回假值；或者不改這裡，直接在 App「設定 → AI 服務設定」
+    // 手動填入真正的值，一樣會覆蓋掉這裡的預設值
+    const val SHARED_SECRET = "REPLACE_WITH_REAL_SECRET_BEFORE_BUILDING"
+}
+
 /** 使用者還沒到「設定」頁填代理伺服器網址時的替身，直接回一個引導訊息，
  *  不會真的發網路請求 */
 class UnconfiguredAIAssistantService : AIAssistantService {
