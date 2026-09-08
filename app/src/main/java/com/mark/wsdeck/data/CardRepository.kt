@@ -228,10 +228,16 @@ class CardRepository(private val context: Context) {
     fun traits(inScope: String): List<String> =
         cards(inScope).flatMap { it.traitsJP }.distinct().sorted()
 
+    /**
+     * 關鍵字比對依「像不像使用者要找的那張卡」分等第排序，不是比對到就照原始
+     * 順序塞回去——不然打第一個字時，卡名裡有這個字的卡會被能力文字裡剛好有
+     * 這個字的卡（通常一大票）淹沒，看起來像沒在猜使用者要找什麼。
+     * 對應 iOS CardDatabase.search 的排序邏輯。
+     */
     fun search(query: SearchQuery): List<Card> {
         val keyword = query.keyword.trim().lowercase()
         val normalized = SearchQuery.normalizeCardNumber(keyword)
-        return snapshot.cards.filter { card ->
+        val filtered = snapshot.cards.filter { card ->
             val scope = query.titleCode
             if (scope != null) {
                 val matches = if (scope in snapshot.productCodes) {
@@ -248,15 +254,31 @@ class CardRepository(private val context: Context) {
             if (query.traits.isNotEmpty() &&
                 query.traits.none { it in card.traitsJP }) return@filter false
             if (query.sources.isNotEmpty() && card.source !in query.sources) return@filter false
-            if (keyword.isEmpty()) return@filter true
+            true
+        }
+        if (keyword.isEmpty()) return filtered
 
+        // 4：卡名開頭就是這個字（中英日都適用，打第一個字最想看到的結果）
+        // 3：卡名裡有這個字，但不是開頭
+        // 2：命中卡號
+        // 1：只有能力文字裡才找得到，排在最後面墊底
+        fun score(card: Card): Int? {
+            val nameZH = card.nameZH.lowercase()
+            val nameJP = card.nameJP.lowercase()
+            if (nameZH.startsWith(keyword) || nameJP.startsWith(keyword)) return 4
+            if (nameZH.contains(keyword) || nameJP.contains(keyword)) return 3
             // 卡號比對忽略大小寫與 / -（打 w139075 也要命中 BRD/W139-075）
             if (normalized.isNotEmpty() &&
                 card.printings.any {
                     SearchQuery.normalizeCardNumber(it.id.lowercase()).contains(normalized)
                 }
-            ) return@filter true
-            card.searchBlob.contains(keyword)
+            ) return 2
+            if (card.searchBlob.contains(keyword)) return 1
+            return null
         }
+
+        return filtered.mapNotNull { card -> score(card)?.let { card to it } }
+            .sortedByDescending { it.second }
+            .map { it.first }
     }
 }
