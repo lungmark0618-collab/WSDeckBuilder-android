@@ -224,7 +224,19 @@ private fun NewsCategoryFilterDialog(store: NewsCategoryFilterStore, onDismiss: 
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(20.dp),
         ) {
-            Text("篩選首頁公告", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "篩選首頁公告",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { store.showAll() }, enabled = store.hidden.isNotEmpty()) { Text("全選") }
+                TextButton(
+                    onClick = { store.hideAll(NewsCategory.all) },
+                    enabled = store.hidden.size != NewsCategory.all.size,
+                ) { Text("全部清除") }
+            }
             Spacer(Modifier.height(12.dp))
             NewsCategory.all.forEach { category ->
                 Row(

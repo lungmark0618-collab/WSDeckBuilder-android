@@ -49,7 +49,7 @@ fun FilterSheet(
         query.titleCode?.let { repo.traits(inScope = it) } ?: emptyList()
     }
     val traitsCardTitle = remember(query.titleCode) {
-        val name = query.titleCode?.let { code -> repo.snapshot.browsableSets.firstOrNull { it.id == code }?.displayNameZH }
+        val name = query.titleCode?.let { code -> repo.scopeDisplayName(code) }
         if (name != null) "特徵（$name）" else "特徵"
     }
 
@@ -110,7 +110,10 @@ fun FilterSheet(
                         }
                     }
 
-                    FilterCard("等級") {
+                    MultiSelectFilterCard("等級", query.levels.size, 4,
+                        onSelectAll = { onQueryChange(query.copy(levels = setOf(0, 1, 2, 3))) },
+                        onClear = { onQueryChange(query.copy(levels = emptySet())) },
+                    ) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(0, 1, 2, 3).forEach { lv ->
@@ -123,7 +126,10 @@ fun FilterSheet(
                         }
                     }
 
-                    FilterCard("顏色") {
+                    MultiSelectFilterCard("顏色", query.colors.size, CardColor.entries.size,
+                        onSelectAll = { onQueryChange(query.copy(colors = CardColor.entries.toSet())) },
+                        onClear = { onQueryChange(query.copy(colors = emptySet())) },
+                    ) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             CardColor.entries.forEach { color ->
@@ -136,7 +142,10 @@ fun FilterSheet(
                         }
                     }
 
-                    FilterCard("種類") {
+                    MultiSelectFilterCard("種類", query.types.size, CardType.entries.size,
+                        onSelectAll = { onQueryChange(query.copy(types = CardType.entries.toSet())) },
+                        onClear = { onQueryChange(query.copy(types = emptySet())) },
+                    ) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             CardType.entries.forEach { type ->
@@ -151,7 +160,10 @@ fun FilterSheet(
 
                     // 沒鎖定作品時特徵動輒上百個，乾脆整區不顯示——選了作品才彈出來
                     if (query.titleCode != null) {
-                        FilterCard(traitsCardTitle) {
+                        MultiSelectFilterCard(traitsCardTitle, query.traits.size, availableTraits.size,
+                            onSelectAll = { onQueryChange(query.copy(traits = availableTraits.toSet())) },
+                            onClear = { onQueryChange(query.copy(traits = emptySet())) },
+                        ) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 availableTraits.forEach { trait ->
@@ -184,7 +196,10 @@ fun FilterSheet(
                     }
 
                     MoreFiltersDisclosure(showMoreFilters, { showMoreFilters = !showMoreFilters }) {
-                        FilterCard("判定標誌") {
+                        MultiSelectFilterCard("判定標誌", query.triggers.size, TriggerIcon.entries.size,
+                            onSelectAll = { onQueryChange(query.copy(triggers = TriggerIcon.entries.toSet())) },
+                            onClear = { onQueryChange(query.copy(triggers = emptySet())) },
+                        ) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TriggerIcon.entries.forEach { trigger ->
@@ -197,7 +212,10 @@ fun FilterSheet(
                                 }
                             }
                         }
-                        FilterCard("收錄來源") {
+                        MultiSelectFilterCard("收錄來源", query.sources.size, CardSource.entries.size,
+                            onSelectAll = { onQueryChange(query.copy(sources = CardSource.entries.toSet())) },
+                            onClear = { onQueryChange(query.copy(sources = emptySet())) },
+                        ) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 CardSource.entries.forEach { source ->
@@ -264,6 +282,36 @@ private fun MoreFiltersDisclosure(
     }
     if (expanded) {
         Spacer(Modifier.height(16.dp))
+        content()
+    }
+}
+
+/** 多選 chip 群組的卡片：標題旁邊多「全選／清除」，選項一多（尤其特徵）
+ *  一個一個點太累，加這個才不用每個 chip 都戳一次 */
+@Composable
+private fun MultiSelectFilterCard(
+    title: String,
+    selectedCount: Int,
+    totalCount: Int,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(AppSurface.panel)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold, color = AppSurface.secondaryText,
+                modifier = Modifier.weight(1f))
+            TextButton(onClick = onSelectAll, enabled = totalCount > 0 && selectedCount != totalCount) { Text("全選") }
+            TextButton(onClick = onClear, enabled = selectedCount > 0) { Text("清除") }
+        }
         content()
     }
 }

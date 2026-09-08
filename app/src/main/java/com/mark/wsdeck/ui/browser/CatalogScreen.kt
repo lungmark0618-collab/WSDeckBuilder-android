@@ -159,9 +159,7 @@ fun CatalogScreen(
         )
         SearchBarRow(
             keyword = query.keyword,
-            pinnedTitle = query.titleCode?.let { code ->
-                repo.snapshot.browsableSets.firstOrNull { it.id == code }?.displayNameZH
-            },
+            pinnedTitle = query.titleCode?.let { code -> repo.scopeDisplayName(code) },
             hasActiveFilters = query.hasActiveFilters,
             usesGrid = usesGrid,
             onKeyword = { query = query.copy(keyword = it) },
@@ -530,8 +528,23 @@ private fun TitleGallery(
     favorites: FavoriteTitlesStore,
     onSelect: (String) -> Unit,
 ) {
-    // 卡多的作品排前面——照代號排等於隨機順序
-    val ordered = remember(sets) { sets.sortedByDescending { it.cardCount } }
+    // 卡多的作品排前面——照代號排等於隨機順序。拆很多彈的作品（如 OVERLORD）
+    // 另外併一張「不分彈」的卡片：只認得卡面、不知道自己要找哪一彈的人，可以
+    // 一次瀏覽整個系列，不用一彈一彈點進去找，對應 iOS TitleGalleryView
+    val ordered = remember(sets) {
+        val grouped = sets.groupBy { it.titleCode }
+        val combined = grouped.values.mapNotNull { group ->
+            val sample = group.firstOrNull() ?: return@mapNotNull null
+            if (group.size <= 1) return@mapNotNull null
+            BrowsableSet(
+                id = sample.titleCode, titleCode = sample.titleCode,
+                titleNameZH = sample.titleNameZH, titleNameJP = sample.titleNameJP,
+                cardCount = group.sumOf { it.cardCount },
+                productCode = null, waveLabel = "不分彈",
+            )
+        }
+        (sets + combined).sortedByDescending { it.cardCount }
+    }
     val favoriteSets = ordered.filter { favorites.isFavorite(it.id) }
     val otherSets = ordered.filter { !favorites.isFavorite(it.id) }
 

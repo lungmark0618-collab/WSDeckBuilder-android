@@ -25,8 +25,8 @@ android {
         applicationId = "com.mark.wsdeck"
         minSdk = 26
         targetSdk = 36
-        versionCode = 23
-        versionName = "0.23"
+        versionCode = 24
+        versionName = "0.24"
     }
 
     signingConfigs {

@@ -23,6 +23,18 @@ class NewsCategoryFilterStore(context: Context) {
         prefs.hiddenNewsCategories = hidden
     }
 
+    /** 全選＝清空隱藏清單，全部分類都顯示 */
+    fun showAll() {
+        hidden = emptySet()
+        prefs.hiddenNewsCategories = hidden
+    }
+
+    /** 全部清除＝把目前看得到的分類全部設成隱藏 */
+    fun hideAll(categories: List<String>) {
+        hidden = categories.toSet()
+        prefs.hiddenNewsCategories = hidden
+    }
+
     /** 一則公告只要還有任一分類沒被隱藏就顯示——公告常常同時掛好幾個分類，
      *  全部被使用者關掉了才真的濾掉 */
     fun isVisible(item: WSNewsItem): Boolean =

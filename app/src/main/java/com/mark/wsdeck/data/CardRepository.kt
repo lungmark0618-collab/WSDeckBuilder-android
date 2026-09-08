@@ -219,6 +219,16 @@ class CardRepository(private val context: Context) {
             snapshot.cards.filter { snapshot.titleByCardId[it.id] == inScope }
         }
 
+    /** 畫面標題／篩選摘要要顯示的名稱：一般情況直接查 browsableSets 就有；
+     *  「不分彈瀏覽整個作品」用的 id 是裸 titleCode，不在 browsableSets 裡
+     *  （每個 BrowsableSet 拆彈後 id 都是 productCode），要另外查 sets 補上，
+     *  對應 iOS CardDatabase.scopeDisplayName */
+    fun scopeDisplayName(code: String): String {
+        snapshot.browsableSets.firstOrNull { it.id == code }?.let { return it.displayNameZH }
+        snapshot.sets.firstOrNull { it.titleCode == code }?.let { return "${it.titleNameZH}（不分彈）" }
+        return code
+    }
+
     /**
      * 只列這個瀏覽單位出現過的特徵，篩選頁鎖定作品/商品時用，對應 iOS 的
      * CardDatabase.traits(inScope:)——全部特徵一次列出來常常有上百個跨作品的
