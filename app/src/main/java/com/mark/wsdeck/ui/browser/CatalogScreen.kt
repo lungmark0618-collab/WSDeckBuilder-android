@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
@@ -896,9 +896,15 @@ private fun CardDetailSheet(
                 Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // 問這張卡的效果／規則——帶目前這一頁（左右滑動中）的卡片資料
-                IconButton(onClick = { aiChat.open(pages[pagerState.currentPage]) }) {
-                    Icon(Icons.Filled.AutoAwesome, contentDescription = "問 AI 這張卡")
+                // 問這張卡的效果／規則——帶目前這一頁（左右滑動中）的卡片資料。
+                // 先準備好要問的卡片，再關掉這個 bottom sheet；AI 對話框跟這裡
+                // 共用同一個 isPresented，兩個不能同時疊在一起，所以退場後才會
+                // 自動接著彈出 AI 視窗，不用使用者自己再手動關一次
+                IconButton(onClick = {
+                    aiChat.open(pages[pagerState.currentPage])
+                    onDismiss()
+                }) {
+                    Icon(Icons.Filled.ChatBubble, contentDescription = "問 AI 這張卡")
                 }
                 Spacer(Modifier.weight(1f))
                 if (pages.size > 1) {
