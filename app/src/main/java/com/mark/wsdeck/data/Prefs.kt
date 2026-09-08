@@ -30,16 +30,6 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_AI_CHAT_BUTTON_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_AI_CHAT_BUTTON_ENABLED, value).apply()
 
-    /** AI 代理伺服器（ai-proxy/）網址，對應 iOS 的 @AppStorage("aiProxyURL")；
-     *  預設就是內建的代理伺服器，不用使用者自己填 */
-    var aiProxyUrl: String
-        get() = prefs.getString(KEY_AI_PROXY_URL, AIProxyDefaults.URL) ?: AIProxyDefaults.URL
-        set(value) = prefs.edit().putString(KEY_AI_PROXY_URL, value).apply()
-
-    /** AI 代理伺服器共用密鑰，對應 iOS 的 @AppStorage("aiProxySharedSecret") */
-    var aiProxySharedSecret: String
-        get() = prefs.getString(KEY_AI_PROXY_SECRET, AIProxyDefaults.SHARED_SECRET) ?: AIProxyDefaults.SHARED_SECRET
-        set(value) = prefs.edit().putString(KEY_AI_PROXY_SECRET, value).apply()
 
     /** 上次靜默檢查卡表更新的時間（epoch ms），對應 iOS 的 lastCheckedAt */
     var cardDataLastCheckedAt: Long
@@ -176,8 +166,6 @@ class Prefs(context: Context) {
         private const val KEY_DECK_USES_GRID = "deck_uses_grid"
         private const val KEY_CATALOG_USES_GRID = "catalog_uses_grid"
         private const val KEY_AI_CHAT_BUTTON_ENABLED = "ai_chat_button_enabled"
-        private const val KEY_AI_PROXY_URL = "ai_proxy_url"
-        private const val KEY_AI_PROXY_SECRET = "ai_proxy_shared_secret"
         private const val KEY_CARD_DATA_CHECKED_AT = "card_data_last_checked_at"
         private const val KEY_ANNOUNCEMENT_READ_IDS = "announcement_read_ids"
         private const val KEY_ANNOUNCEMENT_DELETED_IDS = "announcement_deleted_ids"

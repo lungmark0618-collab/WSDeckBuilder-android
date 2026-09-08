@@ -8,7 +8,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material.icons.Icons
@@ -48,10 +47,6 @@ fun SettingsScreen(
     onboarding: OnboardingState,
     aiChatButtonEnabled: Boolean,
     onSetAiChatButtonEnabled: (Boolean) -> Unit,
-    aiProxyUrl: String,
-    onSetAiProxyUrl: (String) -> Unit,
-    aiProxySharedSecret: String,
-    onSetAiProxySharedSecret: (String) -> Unit,
     onOpenAppearance: () -> Unit,
 ) {
     val ui by updater.ui.collectAsStateWithLifecycle()
@@ -139,29 +134,6 @@ fun SettingsScreen(
             }
             Text(
                 "可以拖到畫面任何位置；放著不動一段時間會自動收到畫面邊緣，不擋畫面。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            HorizontalDivider()
-            Text("AI 服務設定", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
-                value = aiProxyUrl,
-                onValueChange = onSetAiProxyUrl,
-                label = { Text("服務網址") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = aiProxySharedSecret,
-                onValueChange = onSetAiProxySharedSecret,
-                label = { Text("服務密鑰") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                "問 AI 功能要接自架的代理伺服器才能真的回答問題，網址與密鑰在部署代理伺服器（ai-proxy/）之後取得，填在這裡即可，不用重開 App。留空時「問 AI」會顯示引導訊息。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

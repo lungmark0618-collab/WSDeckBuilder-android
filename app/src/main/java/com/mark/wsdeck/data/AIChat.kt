@@ -148,15 +148,10 @@ class RemoteAIAssistantService(
     }
 }
 
-/** 依「設定」頁目前存的代理伺服器網址／密鑰，決定要用真的服務還是引導訊息，
- *  每次問答都重新讀一次，設定改了不用重開 App */
+/** 固定回傳內建的代理伺服器，不再讀「設定」頁（已移除，避免被誤清掉） */
 object AIAssistantServiceResolver {
-    fun current(context: Context): AIAssistantService {
-        val prefs = Prefs(context)
-        val url = prefs.aiProxyUrl.trim()
-        if (url.isEmpty()) return UnconfiguredAIAssistantService()
-        return RemoteAIAssistantService(url, prefs.aiProxySharedSecret)
-    }
+    fun current(context: Context): AIAssistantService =
+        RemoteAIAssistantService(AIProxyDefaults.URL, AIProxyDefaults.SHARED_SECRET)
 }
 
 /**
