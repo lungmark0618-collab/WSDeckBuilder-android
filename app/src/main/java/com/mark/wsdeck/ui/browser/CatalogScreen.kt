@@ -1,5 +1,6 @@
 package com.mark.wsdeck.ui.browser
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -73,6 +74,7 @@ fun CatalogScreen(
     favorites: FavoriteTitlesStore,
     aiChat: com.mark.wsdeck.ui.ai.AIChatState,
 ) {
+    var browseAll by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf(SearchQuery()) }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
     var detail by remember { mutableStateOf<Card?>(null) }
@@ -91,7 +93,7 @@ fun CatalogScreen(
     val collection by collectionRepo.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
     val collectionIndex = remember(collection) { CollectionStore.index(collection) }
 
-    val showsGallery = query.keyword.isEmpty() && !query.hasActiveFilters
+    val showsGallery = !browseAll && query.keyword.isEmpty() && !query.hasActiveFilters
 
     // 供 AppearanceSettings 的「強調色跟著作品」模式使用，對應 iOS 的
     // currentTitleCode——拆過彈的話 query.titleCode 是商品代碼（如
@@ -105,7 +107,7 @@ fun CatalogScreen(
 
     // 打字時每個字都重搜會頓；停一下再搜，中途的輸入直接作廢。收藏狀態不是
     // CardRepository.search() 認得的條件，跟 iOS 一樣在搜完之後另外過濾一次。
-    LaunchedEffect(query, collectionIndex) {
+    LaunchedEffect(query, collectionIndex, browseAll) {
         if (showsGallery) {
             results = emptyList()
             return@LaunchedEffect
@@ -120,6 +122,11 @@ fun CatalogScreen(
             OwnershipFilter.OWNED -> found.filter { CollectionStore.owned(it, collectionIndex) > 0 }
             OwnershipFilter.MISSING -> found.filter { CollectionStore.owned(it, collectionIndex) == 0 }
         }
+    }
+
+    BackHandler(enabled = !showsGallery && detail == null && !showFilter && !showDeckQuickView) {
+        browseAll = false
+        query = SearchQuery()
     }
 
     // 選了作品/商品之後，整個畫面往右滑就退回作品選單——這裡沒有真正的
@@ -149,7 +156,7 @@ fun CatalogScreen(
                 )
             },
     ) {
-        ActiveDeckPickerRow(
+        if (!showsGallery) ActiveDeckPickerRow(
             decks = decks,
             activeDeck = activeDeck,
             onSelect = { uuid ->
@@ -159,11 +166,11 @@ fun CatalogScreen(
         )
         SearchBarRow(
             keyword = query.keyword,
-            pinnedTitle = query.titleCode?.let { code -> repo.scopeDisplayName(code) },
+            pinnedTitle = query.titleCode?.let { code -> repo.scopeDisplayName(code) } ?: if (browseAll) "全部卡片" else null,
             hasActiveFilters = query.hasActiveFilters,
             usesGrid = usesGrid,
             onKeyword = { query = query.copy(keyword = it) },
-            onClearTitle = { query = SearchQuery() },
+            onClearTitle = { browseAll = false; query = SearchQuery() },
             onOpenFilter = {
                 showFilter = true
                 onboarding.notify(OnboardingStep.FILTER)
@@ -178,14 +185,13 @@ fun CatalogScreen(
         ActiveFilterBar(query, repo.snapshot.sets) { query = SearchQuery(titleCode = query.titleCode) }
 
         // 加卡加到一半想確認「現在到底放了哪些」，不必離開圖鑑切去牌組分頁。
-        // ⚠ 這不是 iOS 有的功能——iOS 圖鑑只靠格子上的張數徽章，沒有現成的
-        // 縮圖列可看，這是額外補的：直接貼在卡片結果上方，點一下拉出完整清單。
-        activeDeck?.let { deck ->
+        // 卡片結果上方放縮圖列；作品選單尚未進入加卡情境，先隱藏。
+        if (!showsGallery) activeDeck?.let { deck ->
             ActiveDeckStrip(deck, repo, networkPolicy) { showDeckQuickView = true }
         }
 
         if (showsGallery) {
-            TitleGallery(repo.snapshot.browsableSets, repo.snapshot.cards.size, favorites) {
+            TitleGallery(repo.snapshot.browsableSets, repo.snapshot.cards.size, favorites, onAllCards = { browseAll = true; query = SearchQuery() }) {
                 query = SearchQuery(titleCode = it)
             }
         } else if (results.isEmpty()) {
@@ -526,6 +532,7 @@ private fun TitleGallery(
     sets: List<BrowsableSet>,
     totalCount: Int,
     favorites: FavoriteTitlesStore,
+    onAllCards: () -> Unit,
     onSelect: (String) -> Unit,
 ) {
     // 卡多的作品排前面——照代號排等於隨機順序。拆很多彈的作品（如 OVERLORD）
@@ -550,10 +557,28 @@ private fun TitleGallery(
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(158.dp),
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("探索作品", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Card(onClick = onAllCards,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Style, contentDescription = null)
+                        Spacer(Modifier.width(12.dp))
+                        Text("全部卡片", modifier = Modifier.weight(1f))
+                        Text("$totalCount 張", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        if (favoriteSets.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionLabel("所有作品", Modifier.padding(top = 12.dp)) }
+        }
         if (favoriteSets.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) { SectionLabel("已收藏") }
             items(favoriteSets, key = { it.id }) { set ->
@@ -591,74 +616,30 @@ private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
 private fun TitleTile(set: BrowsableSet, favorites: FavoriteTitlesStore, onClick: () -> Unit) {
     val color = TitlePalette.accent(set.titleCode)
     val isFavorite = favorites.isFavorite(set.id)
-    Box(
-        Modifier
-            .height(104.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.7f))))
-            .clickable(onClick = onClick),
+    Column(
+        Modifier.fillMaxWidth().heightIn(min = 164.dp).clip(RoundedCornerShape(20.dp))
+            .background(Brush.linearGradient(listOf(
+                androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainerHigh, color, 0.06f),
+                MaterialTheme.colorScheme.surface)))
+            .clickable(onClick = onClick).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Text(
-                    set.titleNameZH,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
+        Text(set.titleNameZH, style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface, minLines = 2, maxLines = 2,
+            overflow = TextOverflow.Ellipsis)
+        Text(set.titleNameJP, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(set.waveLabel ?: set.productCode ?: set.titleCode,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("${set.cardCount} 張", modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            IconButton(onClick = { favorites.toggle(set.id) }, modifier = Modifier.size(48.dp)) {
+                Icon(if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    contentDescription = (if (isFavorite) "取消收藏" else "收藏") + set.titleNameZH,
+                    tint = if (isFavorite) Color(0xFFB88400) else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    set.titleNameJP,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.85f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                // 拆彈的官方彈次標籤（如「Vol.2」）獨立成小徽章，不跟標題文字
-                // 擠在一起——之前直接接在標題後面，長一點的官方名稱會很難掃視
-                set.waveLabel?.let { wave ->
-                    Text(
-                        wave,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .padding(start = 4.dp)
-                            .background(Color.White.copy(alpha = 0.22f), CircleShape)
-                            .padding(horizontal = 6.dp, vertical = 1.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth()) {
-                Text(
-                    set.productCode ?: set.titleCode,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.8f),
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "${set.cardCount}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White,
-                )
-            }
-        }
-        // 觸控範圍撐大到 40dp，不然一顆小星星在色塊右上角很難點準
-        IconButton(
-            onClick = { favorites.toggle(set.id) },
-            modifier = Modifier.align(Alignment.TopEnd).size(40.dp),
-        ) {
-            Icon(
-                if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                contentDescription = if (isFavorite) "取消收藏" else "收藏",
-                tint = if (isFavorite) androidx.compose.ui.graphics.Color(0xFFFFD54F) else Color.White.copy(alpha = 0.85f),
-            )
         }
     }
 }

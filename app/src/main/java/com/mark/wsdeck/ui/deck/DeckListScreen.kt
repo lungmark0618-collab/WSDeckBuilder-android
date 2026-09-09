@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mark.wsdeck.data.CardColor
 import com.mark.wsdeck.data.CardRepository
@@ -163,6 +164,8 @@ fun DeckListScreen(
         floatingActionButton = {
             Box {
                 FloatingActionButton(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
                     onClick = { showAddMenu = true },
                     modifier = Modifier.onboardingAnchor(OnboardingStep.CREATE_DECK, onboarding),
                 ) {
@@ -210,8 +213,13 @@ fun DeckListScreen(
     ) { padding ->
         if (decks.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                Text("還沒有牌組，按右下角建立一個",
-                    style = MaterialTheme.typography.bodyMedium)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Icon(Icons.Filled.Style, contentDescription = null, modifier = Modifier.size(44.dp))
+                    Text("還沒有牌組", style = MaterialTheme.typography.headlineSmall)
+                    Text("先建立牌組，再到圖鑑挑選卡片。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { showCreate = true }) { Text("建立第一副牌組") }
+                    OutlinedButton(onClick = { showQRScanner = true }) { Text("掃描 QR Code 匯入") }
+                }
             }
         } else {
             LazyColumn(
@@ -219,6 +227,17 @@ fun DeckListScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                item {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("我的牌組", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                            Text("${decks.size} 副牌組", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Button(onClick = { showCreate = true }) { Icon(Icons.Filled.Add, null); Text("建立") }
+                    }
+                    Text("點釘選加入首頁，更多選單可管理牌組", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
+                }
                 itemsIndexed(decks, key = { _, d -> d.deck.uuid }) { index, d ->
                     DeckRow(
                         d, cardRepo, networkPolicy,
@@ -403,8 +422,10 @@ private fun DeckRow(
 
     Card(
         onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth().then(
-            if (isActive) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium)
+            if (isActive) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp))
             else Modifier,
         ),
     ) {
@@ -437,7 +458,7 @@ private fun DeckRow(
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(d.deck.name, style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                            maxLines = 2, modifier = Modifier.weight(1f, fill = false))
                         if (isActive) {
                             Spacer(Modifier.width(6.dp))
                             Text(
@@ -455,7 +476,7 @@ private fun DeckRow(
                             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
                     Text(
-                        "${d.totalCount}/50",
+                        "${d.totalCount}/50 · CX ${d.entries.sumOf { entry -> if (cardRepo.snapshot.cardById[entry.printingId]?.cardType == CardType.CLIMAX) entry.count else 0 }}/8",
                         style = MaterialTheme.typography.bodySmall,
                         color = if (d.totalCount == 50) MaterialTheme.colorScheme.primary
                                else MaterialTheme.colorScheme.onSurfaceVariant,

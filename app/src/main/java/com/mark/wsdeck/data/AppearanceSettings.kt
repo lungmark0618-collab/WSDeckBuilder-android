@@ -2,6 +2,7 @@ package com.mark.wsdeck.data
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,8 +34,8 @@ enum class TextTone(val label: String) {
 
     fun color(scheme: ColorScheme): Color? = when (this) {
         STANDARD -> null
-        WARM -> Color(red = 0.36f, green = 0.30f, blue = 0.24f)
-        COOL -> Color(red = 0.28f, green = 0.32f, blue = 0.38f)
+        WARM -> if (scheme.background.luminance() <= 0.179f) Color(0xFFEBDEC9) else Color(0xFF5C4D3D)
+        COOL -> if (scheme.background.luminance() <= 0.179f) Color(0xFFCFDEF0) else Color(0xFF475261)
         HIGH_CONTRAST -> scheme.onBackground
     }
 }
@@ -46,12 +47,13 @@ enum class BackgroundStyle(val label: String) {
     DARK("深色"),
     PURE_BLACK("純黑"),
     PAPER("米紙"),
-    MIDNIGHT("深海藍");
+    MIDNIGHT("深海藍"),
+    CUSTOM("自訂顏色");
 
     /** null＝跟隨系統，否則強制淺／深色 */
     val forcesDark: Boolean?
         get() = when (this) {
-            SYSTEM -> null
+            SYSTEM, CUSTOM -> null
             LIGHT, PAPER -> false
             DARK, PURE_BLACK, MIDNIGHT -> true
         }
@@ -59,7 +61,7 @@ enum class BackgroundStyle(val label: String) {
     /** null＝用主題預設背景 */
     val color: Color?
         get() = when (this) {
-            SYSTEM, LIGHT, DARK -> null
+            SYSTEM, LIGHT, DARK, CUSTOM -> null
             PURE_BLACK -> Color.Black
             PAPER -> Color(red = 0.96f, green = 0.94f, blue = 0.88f)
             MIDNIGHT -> Color(red = 0.06f, green = 0.09f, blue = 0.16f)
@@ -93,7 +95,8 @@ class AppearanceSettings(context: Context) {
         val textSize: TextSize = TextSize.STANDARD,
         val textWeight: TextWeightOption = TextWeightOption.REGULAR,
         val textTone: TextTone = TextTone.STANDARD,
-        val background: BackgroundStyle = BackgroundStyle.SYSTEM,
+        val background: BackgroundStyle = BackgroundStyle.PURE_BLACK,
+        val customBackgroundHex: String = "E8E4DC",
         val accentMode: AccentMode = AccentMode.FOLLOW_TITLE,
         val fixedAccent: AccentPreset = AccentPreset.ROSE,
         /** 目前瀏覽的作品（由圖鑑設定），供 accentMode == FOLLOW_TITLE 使用 */
@@ -114,6 +117,7 @@ class AppearanceSettings(context: Context) {
             textWeight = prefs.appTextWeight,
             textTone = prefs.appTextTone,
             background = prefs.appBackground,
+            customBackgroundHex = prefs.customBackgroundHex,
             accentMode = prefs.appAccentMode,
             fixedAccent = prefs.appFixedAccent,
             showJapanese = prefs.showJapanese,
@@ -139,6 +143,13 @@ class AppearanceSettings(context: Context) {
     fun setBackground(value: BackgroundStyle) {
         prefs.appBackground = value
         _ui.update { it.copy(background = value) }
+    }
+
+    fun setCustomBackgroundHex(value: String) {
+        val normalized = value.removePrefix("#").uppercase()
+        if (!normalized.matches(Regex("[0-9A-F]{6}"))) return
+        prefs.customBackgroundHex = normalized
+        _ui.update { it.copy(customBackgroundHex = normalized) }
     }
 
     fun setAccentMode(value: AccentMode) {

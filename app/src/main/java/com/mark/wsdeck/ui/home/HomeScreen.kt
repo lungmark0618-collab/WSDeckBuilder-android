@@ -140,119 +140,100 @@ fun HomeScreen(
             )
         },
     ) { padding ->
-        when {
-            ui.items.isEmpty() && ui.isLoading -> Box(
-                Modifier.fillMaxSize().padding(padding), Alignment.Center,
-            ) { CircularProgressIndicator() }
-
-            ui.items.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.Newspaper, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
-                    Text("還沒有公告，下拉重新整理試試看")
+        LazyColumn(
+            Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item {
+                OutlinedTextField(
+                    value = searchText,
+                    onValueChange = { searchText = it },
+                    placeholder = { Text("搜尋最新動態") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchText.isNotEmpty()) {
+                            IconButton(onClick = { searchText = "" }) {
+                                Icon(Icons.Filled.Close, contentDescription = "清除")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            // 搜尋中就只顯示比對結果，把常用牌組、輪播收起來——
+            // 這兩區跟關鍵字無關，留著只會讓人分心找不到搜尋結果在哪
+            if (!isSearching && pinnedDecksOrdered.isNotEmpty()) {
+                item {
+                    PinnedDecksRow(pinnedDecksOrdered, cardRepo, networkPolicy, onOpenDeck)
                 }
             }
-
-            else -> LazyColumn(
-                Modifier.fillMaxSize().padding(padding).background(Color(0xFF05060C)).drawBehind {
-                    // 全息光暈——呼應集換式卡牌本身的「卡背」質感，
-                    // 淡淡三團色暈疊在近黑底色上，不搶內容但讓畫面不死板
-                    drawRect(
-                        Brush.radialGradient(
-                            listOf(Color(0xFFBF5AF2).copy(alpha = 0.20f), Color.Transparent),
-                            center = Offset(size.width * 0.88f, size.height * -0.02f),
-                            radius = 480f,
-                        ),
-                    )
-                    drawRect(
-                        Brush.radialGradient(
-                            listOf(Color(0xFFFF9F0A).copy(alpha = 0.10f), Color.Transparent),
-                            center = Offset(size.width * -0.1f, size.height * 0.10f),
-                            radius = 460f,
-                        ),
-                    )
-                    drawRect(
-                        Brush.radialGradient(
-                            listOf(Color(0xFFD95999).copy(alpha = 0.14f), Color.Transparent),
-                            center = Offset(size.width * 0.5f, size.height * 0.9f),
-                            radius = 640f,
-                        ),
-                    )
-                },
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
+            if (!isSearching && heroItems.isNotEmpty()) {
                 item {
-                    OutlinedTextField(
-                        value = searchText,
-                        onValueChange = { searchText = it },
-                        placeholder = { Text("搜尋最新動態") },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        trailingIcon = {
-                            if (searchText.isNotEmpty()) {
-                                IconButton(onClick = { searchText = "" }) {
-                                    Icon(Icons.Filled.Close, contentDescription = "清除")
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                    HeroCarousel(
+                        heroItems, networkPolicy,
+                        modifier = Modifier,
+                    ) { selectedItem = it }
+                }
+            }
+            item {
+                Text(if (isSearching) "搜尋結果" else "最新動態",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 16.dp)
+                        .onboardingAnchor(OnboardingStep.HOME_INTRO, onboarding))
+            }
+            if (ui.isLoading && ui.items.isEmpty()) {
+                item { Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() } }
+            } else if (!isSearching && filteredItems.isEmpty()) {
+                item {
+                    Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(if (ui.items.isEmpty()) "暫時沒有消息" else "沒有符合的公告")
+                        TextButton(onClick = {
+                            if (ui.items.isEmpty()) scope.launch { newsRepo.refresh() }
+                            else showingCategoryFilter = true
+                        }) { Text(if (ui.items.isEmpty()) "重新載入" else "調整分類") }
+                    }
+                }
+            }
+            ui.errorMessage?.let { message ->
+                item {
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFE68A00),
+                        modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
-                // 搜尋中就只顯示比對結果，把常用牌組、輪播收起來——
-                // 這兩區跟關鍵字無關，留著只會讓人分心找不到搜尋結果在哪
-                if (!isSearching && pinnedDecksOrdered.isNotEmpty()) {
-                    item {
-                        PinnedDecksRow(pinnedDecksOrdered, cardRepo, networkPolicy, onOpenDeck)
-                    }
-                }
-                if (!isSearching && heroItems.isNotEmpty()) {
-                    item {
-                        HeroCarousel(
-                            heroItems, networkPolicy,
-                            modifier = Modifier.onboardingAnchor(OnboardingStep.HOME_INTRO, onboarding),
-                        ) { selectedItem = it }
-                    }
-                }
-                ui.errorMessage?.let { message ->
-                    item {
+            }
+            if (isSearching && filteredItems.isEmpty()) {
+                item {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(Icons.Filled.Search, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(8.dp))
+                        Text("沒有符合的消息", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            message,
+                            "換個關鍵字試試，或確認分類篩選有沒有把它藏起來。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFE68A00),
-                            modifier = Modifier.padding(bottom = 4.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-                if (isSearching && filteredItems.isEmpty()) {
-                    item {
-                        Column(
-                            Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Icon(Icons.Filled.Search, contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(8.dp))
-                            Text("沒有符合的消息", style = MaterialTheme.typography.bodyMedium)
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "換個關鍵字試試，或確認分類篩選有沒有把它藏起來。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-                items(filteredItems, key = { it.date + it.titleJP + it.url }) { item ->
-                    NewsRow(item) { selectedItem = item }
-                }
-                item {
-                    TextButton(
-                        onClick = { scope.launch { newsRepo.refresh() } },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (ui.isLoading) "重新整理中…" else "重新整理") }
-                }
+            }
+            items(filteredItems, key = { it.date + it.titleJP + it.url }) { item ->
+                NewsRow(item) { selectedItem = item }
+            }
+            item {
+                TextButton(
+                    onClick = { scope.launch { newsRepo.refresh() } },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (ui.isLoading) "重新整理中…" else "重新整理") }
             }
         }
     }
@@ -323,76 +304,22 @@ private fun NewsCategoryFilterDialog(store: NewsCategoryFilterStore, onDismiss: 
 
 @Composable
 private fun NewsRow(item: WSNewsItem, onClick: () -> Unit) {
-    val foilColor = item.categories.firstOrNull()?.let { NewsCategory.color(it) } ?: Color(0xFF9E9E9E)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.linearGradient(listOf(Color(0xFF14151F), Color(0xFF0C0D14))),
-            )
-            .drawBehind {
-                // 卡角的全息燙金色塊——這就是「B·全息卡背」跟其他方向的核心差異
-                val ribbon = 96.dp.toPx()
-                withTransform({
-                    translate(size.width, 0f)
-                    rotate(45f, pivot = Offset.Zero)
-                }) {
-                    drawRect(foilColor.copy(alpha = 0.16f), size = androidx.compose.ui.geometry.Size(ribbon, ribbon))
-                }
+    Column {
+        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(item.categories.joinToString(" · ") { NewsCategory.labelZH(it) },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(item.displayTitle, style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                Text(item.date.replace("-", "."), style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .padding(16.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            item.categories.forEach { category ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = 8.dp),
-                ) {
-                    // 小菱形「寶石」取代原本的色塊膠囊，呼應卡牌稀有度標記
-                    Box(
-                        Modifier
-                            .size(6.dp)
-                            .rotate(45f)
-                            .background(NewsCategory.color(category), RoundedCornerShape(1.5.dp)),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        NewsCategory.labelZH(category),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 0.4.sp,
-                        color = NewsCategory.tint(category),
-                    )
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                item.date.replace("-", "."),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = 0.42f),
-            )
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            item.displayTitle,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFFF5F5F5),
-        )
-        Spacer(Modifier.height(4.dp))
-        Row(Modifier.fillMaxWidth()) {
-            Spacer(Modifier.weight(1f))
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.size(18.dp),
-            )
-        }
+        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f))
     }
 }
 
@@ -411,7 +338,7 @@ private fun PinnedDecksRow(
             "常用牌組",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
-            color = Color.White.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(decks, key = { it.deck.uuid }) { d ->
@@ -436,8 +363,8 @@ private fun PinnedDeckCard(
         Modifier
             .width(180.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF1C1C1F))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -458,10 +385,10 @@ private fun PinnedDeckCard(
                     .width(42.dp)
                     .aspectRatio(63f / 88f)
                     .clip(RoundedCornerShape(6.dp))
-                    .background(Color.White.copy(alpha = 0.08f)),
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.Style, contentDescription = null, tint = Color.White.copy(alpha = 0.4f))
+                Icon(Icons.Filled.Style, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
             }
         }
         Spacer(Modifier.width(10.dp))
@@ -470,21 +397,19 @@ private fun PinnedDeckCard(
                 d.deck.name,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
             )
             Text(
                 "${d.totalCount} 張",
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.55f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
             )
         }
     }
 }
 
-/** 首頁最上方的大圖輪播——參考官網首頁「最新商品」跑馬燈：整張商品視覺圖
- *  滿版顯示、左右滑動切換、底部疊標題跟日期，比純文字列表更能一眼抓住
- *  「現在有什麼新東西」 */
+/** 首頁保留商品大圖，配圖與標題分區；輪播上方不額外放宣傳文字。 */
 @Composable
 private fun HeroCarousel(
     items: List<WSNewsItem>,
@@ -496,7 +421,7 @@ private fun HeroCarousel(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HorizontalPager(state = pagerState) { page ->
             val item = items[page]
-            HeroSlide(item, NewsCategory.color(item.categories.firstOrNull() ?: ""), networkPolicy) {
+            HeroSlide(item, networkPolicy) {
                 onSelect(item)
             }
         }
@@ -511,7 +436,7 @@ private fun HeroCarousel(
                         Modifier
                             .size(width = if (selected) 16.dp else 6.dp, height = 6.dp)
                             .clip(CircleShape)
-                            .background(if (selected) Color.White else Color.White.copy(alpha = 0.28f)),
+                            .background(if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)),
                     )
                 }
             }
@@ -520,72 +445,33 @@ private fun HeroCarousel(
 }
 
 @Composable
-private fun HeroSlide(item: WSNewsItem, accent: Color, networkPolicy: NetworkPolicy, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(224.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick),
+private fun HeroSlide(item: WSNewsItem, networkPolicy: NetworkPolicy, onClick: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(28.dp)),
     ) {
         item.imageURL?.let { url ->
-            PolicyGatedCardImage(
-                url = url,
-                contentDescription = item.displayTitle,
-                networkPolicy = networkPolicy,
-                modifier = Modifier.fillMaxSize(),
-            )
+            PolicyGatedCardImage(url = url, contentDescription = item.displayTitle,
+                networkPolicy = networkPolicy, contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxWidth().height(220.dp).clickable(onClick = onClick))
         }
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.92f)),
-                    ),
-                ),
-        )
-        Column(
-            Modifier.align(Alignment.BottomStart).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(6.dp)
-                        .rotate(45f)
-                        .background(accent, RoundedCornerShape(1.5.dp)),
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    item.categories.firstOrNull()?.let { NewsCategory.labelZH(it) } ?: "",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 0.4.sp,
-                    color = Color.White.copy(alpha = 0.85f),
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    item.date.replace("-", "."),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White.copy(alpha = 0.85f),
-                )
+        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(24.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(item.categories.firstOrNull()?.let { NewsCategory.labelZH(it) } ?: "商品資訊",
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(item.displayTitle, style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface,
+                    minLines = 2, maxLines = 2)
             }
-            Text(
-                item.displayTitle,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
-                color = Color.White,
-                maxLines = 2,
-            )
+            Spacer(Modifier.width(16.dp))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-/** 公告詳情：先讓使用者看重點（規格重點或至少標題／分類／日期），
- *  有興趣才點下面的按鈕去官網看完整內容——不是點一下就直接跳出 App。 */
 @Composable
 private fun NewsDetailDialog(item: WSNewsItem, networkPolicy: NetworkPolicy, onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current

@@ -1,11 +1,17 @@
 package com.mark.wsdeck.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import com.mark.wsdeck.data.BackgroundStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -22,26 +28,16 @@ import com.mark.wsdeck.data.TextWeightOption
  */
 @Composable
 fun AppTheme(appearance: AppearanceSettings.UiState, content: @Composable () -> Unit) {
-    // 玻璃感浮動分頁列（GlassTabBar）假設深色底，App 現在統一走固定深色調色盤，
-    // 不再依 isSystemInDarkTheme() 或使用者的背景選項變化——對應 iOS 拿掉「背景」
-    // 設定、AppSurface 全部寫死的決定
-    val baseScheme = remember { darkColorScheme() }
-    val accent = appearance.accentColor
-
-    val colorScheme = remember(baseScheme, accent) {
-        baseScheme.copy(
-            primary = accent,
-            secondary = accent,
-            tertiary = accent,
-            background = AppSurface.background,
-            surface = AppSurface.panel,
-        )
-    }
-
-    val textColor = appearance.textTone.color(colorScheme)
-    val finalScheme = remember(colorScheme, textColor) {
-        if (textColor == null) colorScheme
-        else colorScheme.copy(onBackground = textColor, onSurface = textColor)
+    val systemDark = isSystemInDarkTheme()
+    val finalScheme = remember(appearance, systemDark) { appearanceColorScheme(appearance, systemDark) }
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.SideEffect {
+        val window = (view.context as? android.app.Activity)?.window
+        if (window != null) {
+            val controller = androidx.core.view.WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = finalScheme.background.luminance() > 0.179f
+            controller.isAppearanceLightNavigationBars = finalScheme.background.luminance() > 0.179f
+        }
     }
 
     val weight = fontWeightFor(appearance.textWeight)
@@ -59,6 +55,47 @@ fun AppTheme(appearance: AppearanceSettings.UiState, content: @Composable () -> 
             }
         }
     }
+}
+
+/** 純配色運算，可驗證系統模式、自訂背景與文字對比。 */
+internal fun appearanceColorScheme(appearance: AppearanceSettings.UiState, systemDark: Boolean): androidx.compose.material3.ColorScheme {
+    val custom = Color(0xFF000000L or (appearance.customBackgroundHex.toLongOrNull(16) ?: 0xE8E4DCL))
+    val isDark = if (appearance.background == BackgroundStyle.CUSTOM) custom.luminance() <= 0.179f
+                 else appearance.background.forcesDark ?: systemDark
+    val baseScheme = if (isDark) darkColorScheme() else lightColorScheme()
+    val background = when (appearance.background) {
+        BackgroundStyle.CUSTOM -> custom
+        BackgroundStyle.PURE_BLACK -> Color.Black
+        BackgroundStyle.LIGHT -> Color(0xFFF5F5F5)
+        BackgroundStyle.DARK -> Color(0xFF0E0E0E)
+        BackgroundStyle.SYSTEM -> if (isDark) Color(0xFF0E0E0E) else Color(0xFFF5F5F5)
+        else -> appearance.background.color ?: baseScheme.background
+    }
+    val surfaceTarget = if (isDark && background.luminance() > 0.10f) Color.Black else Color.White
+    val panel = lerp(background, surfaceTarget, if (isDark) 0.10f else 0.72f)
+    val elevated = lerp(background, surfaceTarget, if (isDark) 0.16f else 0.90f)
+    val accent = appearance.accentColor
+    val colorScheme = baseScheme.copy(
+        primary = accent,
+        onPrimary = if (accent.luminance() > 0.179f) Color.Black else Color.White,
+        secondary = accent,
+        tertiary = accent,
+        background = background,
+        surface = panel,
+        surfaceVariant = elevated,
+        surfaceContainer = panel,
+        surfaceContainerLow = panel,
+        surfaceContainerHigh = elevated,
+        surfaceContainerHighest = elevated,
+        surfaceContainerLowest = background,
+        onBackground = if (isDark) Color.White else Color.Black,
+        onSurface = if (isDark) Color.White else Color.Black,
+    )
+
+    val textColor = appearance.textTone.color(colorScheme)
+    return if (textColor == null) colorScheme
+        else colorScheme.copy(onBackground = textColor, onSurface = textColor)
+
 }
 
 private fun fontWeightFor(option: TextWeightOption): FontWeight? = when (option) {

@@ -2,7 +2,8 @@ package com.mark.wsdeck.ui.shared
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -41,6 +42,8 @@ fun <T> GlassTabBar(
     ) {
         Row(
             Modifier
+                .widthIn(max = 430.dp)
+                .fillMaxWidth()
                 .clip(CircleShape)
                 .background(AppSurface.panel.copy(alpha = 0.92f))
                 .border(1.dp, AppSurface.hairline, CircleShape)
@@ -51,11 +54,13 @@ fun <T> GlassTabBar(
                 val isSelected = item.id == selected
                 Column(
                     Modifier
-                        .width(84.dp)
-                        .height(66.dp)
+                        .weight(1f)
+                        .heightIn(min = 54.dp)
                         .clip(CircleShape)
-                        .background(if (isSelected) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-                        .clickable(
+                        .background(if (isSelected) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent)
+                        .selectable(
+                            selected = isSelected,
+                            role = Role.Tab,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = { onSelect(item.id) },
@@ -65,14 +70,14 @@ fun <T> GlassTabBar(
                 ) {
                     Icon(
                         item.icon,
-                        contentDescription = item.title,
-                        tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.92f),
-                        modifier = Modifier.size(25.dp),
+                        contentDescription = null,
+                        tint = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(21.dp),
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         item.title,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.92f),
+                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }

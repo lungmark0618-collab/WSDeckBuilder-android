@@ -99,8 +99,12 @@ class Prefs(context: Context) {
         set(value) = prefs.edit().putString(KEY_APP_TEXT_TONE, value.name).apply()
 
     var appBackground: BackgroundStyle
-        get() = enumOrDefault(KEY_APP_BACKGROUND, BackgroundStyle.SYSTEM)
+        get() = enumOrDefault(KEY_APP_BACKGROUND, BackgroundStyle.PURE_BLACK)
         set(value) = prefs.edit().putString(KEY_APP_BACKGROUND, value.name).apply()
+
+    var customBackgroundHex: String
+        get() = prefs.getString("ap.customBackgroundHex", "E8E4DC") ?: "E8E4DC"
+        set(value) = prefs.edit().putString("ap.customBackgroundHex", value).apply()
 
     var appAccentMode: AccentMode
         get() = enumOrDefault(KEY_APP_ACCENT_MODE, AccentMode.FOLLOW_TITLE)

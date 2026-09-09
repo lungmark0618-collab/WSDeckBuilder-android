@@ -78,7 +78,8 @@ fun FloatingChatButton(onClick: () -> Unit) {
 
         Surface(
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
             shadowElevation = 6.dp,
             modifier = Modifier
                 .size(size)
@@ -124,7 +125,7 @@ fun FloatingChatButton(onClick: () -> Unit) {
                 Icon(
                     Icons.Filled.ChatBubble,
                     contentDescription = "問 AI",
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
