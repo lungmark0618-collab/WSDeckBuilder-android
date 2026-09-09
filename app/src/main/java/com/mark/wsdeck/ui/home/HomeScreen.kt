@@ -231,11 +231,11 @@ private fun NewsCategoryFilterDialog(store: NewsCategoryFilterStore, onDismiss: 
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = { store.showAll() }, enabled = store.hidden.isNotEmpty()) { Text("全選") }
-                TextButton(
-                    onClick = { store.hideAll(NewsCategory.all) },
-                    enabled = store.hidden.size != NewsCategory.all.size,
-                ) { Text("全部清除") }
+                // 同一顆按鈕：全部隱藏時顯示「全選」，全部顯示時變成「全部清除」
+                val allHidden = store.hidden.size == NewsCategory.all.size
+                TextButton(onClick = { if (allHidden) store.showAll() else store.hideAll(NewsCategory.all) }) {
+                    Text(if (allHidden) "全選" else "全部清除")
+                }
             }
             Spacer(Modifier.height(12.dp))
             NewsCategory.all.forEach { category ->

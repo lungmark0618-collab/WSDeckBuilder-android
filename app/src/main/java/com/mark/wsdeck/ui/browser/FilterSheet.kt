@@ -286,8 +286,8 @@ private fun MoreFiltersDisclosure(
     }
 }
 
-/** 多選 chip 群組的卡片：標題旁邊多「全選／清除」，選項一多（尤其特徵）
- *  一個一個點太累，加這個才不用每個 chip 都戳一次 */
+/** 多選 chip 群組的卡片：標題旁邊多一顆「全選／全部清除」——同一顆按鈕，
+ *  選滿了就變成「全部清除」，不是分開兩顆各自變灰 */
 @Composable
 private fun MultiSelectFilterCard(
     title: String,
@@ -297,6 +297,7 @@ private fun MultiSelectFilterCard(
     onClear: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val allSelected = totalCount > 0 && selectedCount == totalCount
     Column(
         Modifier
             .fillMaxWidth()
@@ -309,8 +310,9 @@ private fun MultiSelectFilterCard(
             Text(title, style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold, color = AppSurface.secondaryText,
                 modifier = Modifier.weight(1f))
-            TextButton(onClick = onSelectAll, enabled = totalCount > 0 && selectedCount != totalCount) { Text("全選") }
-            TextButton(onClick = onClear, enabled = selectedCount > 0) { Text("清除") }
+            TextButton(onClick = if (allSelected) onClear else onSelectAll, enabled = totalCount > 0) {
+                Text(if (allSelected) "全部清除" else "全選")
+            }
         }
         content()
     }
