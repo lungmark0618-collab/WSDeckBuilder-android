@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Newspaper
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -82,6 +84,10 @@ fun HomeScreen(
     // 有興趣看完整內容的人，詳情頁裡還有官網連結
     var selectedItem by remember { mutableStateOf<WSNewsItem?>(null) }
     var showingCategoryFilter by remember { mutableStateOf(false) }
+    // 搜尋「最新動態」用的關鍵字——比對標題（中日文）跟商品規格重點，
+    // 對應 iOS HomeView 的 searchText
+    var searchText by remember { mutableStateOf("") }
+    val isSearching = searchText.isNotBlank()
     // 依釘選順序排出實際存在的牌組——牌組被刪掉但清理沒跑到的殘影
     // （理論上不會發生，DeckListScreen 刪牌組時已經呼叫 pinnedDecks.remove，
     // 這裡只是多一層防呆）就自然濾掉，不會顯示空卡片
@@ -90,9 +96,17 @@ fun HomeScreen(
         pinnedDecks.uuids.mapNotNull { byUuid[it] }
     }
     // 套用使用者的分類篩選——輪播跟列表共用同一份結果，免得使用者把某分類
-    // 關掉了，卻還在輪播裡看到
-    val filteredItems = remember(ui.items, newsCategoryFilter.hidden) {
-        ui.items.filter { newsCategoryFilter.isVisible(it) }
+    // 關掉了，卻還在輪播裡看到；再疊上關鍵字搜尋，比對標題（中日文）跟商品
+    // 規格重點，不比對分類標籤本身
+    val filteredItems = remember(ui.items, newsCategoryFilter.hidden, searchText) {
+        val categoryFiltered = ui.items.filter { newsCategoryFilter.isVisible(it) }
+        if (!isSearching) return@remember categoryFiltered
+        val keyword = searchText.trim()
+        categoryFiltered.filter { item ->
+            item.titleZH?.contains(keyword, ignoreCase = true) == true ||
+                item.titleJP.contains(keyword, ignoreCase = true) ||
+                item.highlightsZH.any { it.contains(keyword, ignoreCase = true) }
+        }
     }
     // 輪播只挑有配圖、跟商品/卡表有關的公告——參考官網首頁「最新商品」跑馬燈的
     // 做法，規則更新、賽事這類沒有視覺重點的公告不適合放大圖展示
@@ -169,12 +183,31 @@ fun HomeScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (pinnedDecksOrdered.isNotEmpty()) {
+                item {
+                    OutlinedTextField(
+                        value = searchText,
+                        onValueChange = { searchText = it },
+                        placeholder = { Text("搜尋最新動態") },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (searchText.isNotEmpty()) {
+                                IconButton(onClick = { searchText = "" }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "清除")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                // 搜尋中就只顯示比對結果，把常用牌組、輪播收起來——
+                // 這兩區跟關鍵字無關，留著只會讓人分心找不到搜尋結果在哪
+                if (!isSearching && pinnedDecksOrdered.isNotEmpty()) {
                     item {
                         PinnedDecksRow(pinnedDecksOrdered, cardRepo, networkPolicy, onOpenDeck)
                     }
                 }
-                if (heroItems.isNotEmpty()) {
+                if (!isSearching && heroItems.isNotEmpty()) {
                     item {
                         HeroCarousel(
                             heroItems, networkPolicy,
@@ -190,6 +223,25 @@ fun HomeScreen(
                             color = Color(0xFFE68A00),
                             modifier = Modifier.padding(bottom = 4.dp),
                         )
+                    }
+                }
+                if (isSearching && filteredItems.isEmpty()) {
+                    item {
+                        Column(
+                            Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(Icons.Filled.Search, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(8.dp))
+                            Text("沒有符合的消息", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "換個關鍵字試試，或確認分類篩選有沒有把它藏起來。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
                 items(filteredItems, key = { it.date + it.titleJP + it.url }) { item ->
