@@ -1,6 +1,8 @@
 package com.mark.wsdeck
 
+import com.mark.wsdeck.ui.shared.SwipeBackAlertDialog as AlertDialog
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
@@ -49,6 +51,8 @@ import com.mark.wsdeck.ui.deck.DeckListScreen
 import com.mark.wsdeck.ui.onboarding.OnboardingOverlay
 import com.mark.wsdeck.ui.settings.AppearanceSettingsScreen
 import com.mark.wsdeck.ui.settings.SettingsScreen
+import com.mark.wsdeck.ui.shared.*
+import androidx.compose.ui.platform.LocalConfiguration
 import com.mark.wsdeck.ui.shared.GlassTabBar
 import com.mark.wsdeck.ui.shared.GlassTabBarItem
 import com.mark.wsdeck.ui.theme.AppSurface
@@ -282,6 +286,29 @@ private fun MainScaffold(
     val prefs = remember { Prefs(context) }
     var aiChatButtonEnabled by remember { mutableStateOf(prefs.aiChatButtonEnabled) }
 
+    val currentBackStack by navController.currentBackStackEntryAsState()
+    val canSwipeBack = currentBackStack?.destination?.route?.let {
+        it == "deck/{uuid}" || it == "settings" || it == "settings/appearance"
+    } == true
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+    var drawerActiveUuid by remember { mutableStateOf(prefs.activeDeckUuid) }
+    val sidebar = remember { SidebarNavigation {
+        drawerActiveUuid = prefs.activeDeckUuid
+        drawerScope.launch { drawerState.open() }
+    } }
+    val sidebarDecks by deckRepo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
+    fun navigateMain(route: String) {
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = false }
+            launchSingleTop = true
+            restoreState = false
+        }
+    }
+    fun closeThen(action: () -> Unit) {
+        drawerScope.launch { drawerState.close(); action() }
+    }
+
     // 每一步該在哪個分頁，教學自己切過去——不然從「設定」按幫助重新開始教學，
     // 第一步「搜尋卡片」會卡在設定頁，找不到搜尋列，對應 iOS RootTabView 同段邏輯
     LaunchedEffect(onboarding.currentStep) {
@@ -294,6 +321,29 @@ private fun MainScaffold(
         }
     }
 
+    CompositionLocalProvider(LocalSidebarNavigation provides sidebar) {
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = drawerState.isOpen,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * 0.82f).dp.coerceAtMost(360.dp)),
+                drawerContainerColor = AppSurface.background,
+            ) {
+                AppSidebar(sidebarDecks, drawerActiveUuid, pinnedDecks, favorites, cardRepo,
+                    onClose = { closeThen {} },
+                    onRoute = { route -> closeThen {
+                        if (route == "settings") navController.navigate(route) { launchSingleTop = true }
+                        else navigateMain(route)
+                    } },
+                    onDeck = { uuid -> closeThen { navigateMain("decks"); navController.navigate("deck/$uuid") } },
+                    onTitle = { code -> closeThen { sidebar.titleRequest = code; navigateMain("catalog") } },
+                    onImport = { action -> closeThen { sidebar.importRequest = action; navigateMain("decks") } },
+                    onAI = { closeThen { aiChat.openGeneral() } },
+                )
+            }
+        },
+    ) {
     Box(Modifier.fillMaxSize().background(AppSurface.background)) {
     Scaffold(
         containerColor = Color.Transparent,
@@ -304,11 +354,12 @@ private fun MainScaffold(
             // 但底部列仍要顯示、且判斷「牌組」分頁為選取狀態
             val selectedTab = tabs.firstOrNull { tab ->
                 currentDestination?.hierarchy?.any {
-                    it.route == tab.route || (tab == Tab.Decks && it.route == "deck/{uuid}")
+                    it.route == tab.route || (tab == Tab.Decks && it.route == "deck/{uuid}") ||
+                        (tab == Tab.Settings && it.route == "settings/appearance")
                 } == true
             } ?: Tab.Home
             GlassTabBar(
-                items = tabs.map { GlassTabBarItem(it, it.label, it.icon) },
+                items = tabs.filter { it != Tab.Settings }.map { GlassTabBarItem(it, it.label, it.icon) },
                 selected = selectedTab,
                 onSelect = { tab ->
                     navController.navigate(tab.route) {
@@ -323,7 +374,7 @@ private fun MainScaffold(
         NavHost(
             navController = navController,
             startDestination = Tab.Home.route,
-            modifier = Modifier.padding(padding),
+            modifier = Modifier.padding(padding).swipeBack(enabled = canSwipeBack && drawerState.isClosed) { navController.popBackStack() },
         ) {
             composable(Tab.Home.route) {
                 com.mark.wsdeck.ui.home.HomeScreen(newsRepo, announcements, onboarding, networkPolicy, cardRepo, deckRepo, pinnedDecks, newsCategoryFilter) { uuid ->
@@ -358,11 +409,14 @@ private fun MainScaffold(
         }
     }
         OnboardingOverlay(onboarding)
-        if (aiChatButtonEnabled) {
+        if (aiChatButtonEnabled && drawerState.isClosed) {
             FloatingChatButton { aiChat.openGeneral() }
         }
         if (aiChat.isPresented) {
             AIChatDialog(aiChat) { aiChat.isPresented = false }
         }
+    }
+    }
+    BackHandler(enabled = drawerState.isOpen) { drawerScope.launch { drawerState.close() } }
     }
 }

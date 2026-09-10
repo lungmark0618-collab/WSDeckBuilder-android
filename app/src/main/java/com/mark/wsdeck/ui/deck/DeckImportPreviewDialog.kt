@@ -1,5 +1,6 @@
 package com.mark.wsdeck.ui.deck
 
+import com.mark.wsdeck.ui.shared.SwipeBackAlertDialog as AlertDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items

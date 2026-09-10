@@ -1,5 +1,6 @@
 package com.mark.wsdeck.ui.home
 
+import com.mark.wsdeck.ui.shared.SidebarMenuButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,7 +40,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import com.mark.wsdeck.ui.shared.SwipeBackDialog as Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mark.wsdeck.data.AnnouncementCenter
 import com.mark.wsdeck.data.CardRepository
@@ -123,7 +124,7 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("首頁") },
+                navigationIcon = { SidebarMenuButton() }, title = { Text("首頁") },
                 actions = {
                     IconButton(onClick = { showingCategoryFilter = true }) {
                         Icon(

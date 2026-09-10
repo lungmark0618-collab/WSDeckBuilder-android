@@ -1,9 +1,11 @@
 package com.mark.wsdeck.ui.browser
 
+import com.mark.wsdeck.ui.shared.swipeBack
+import com.mark.wsdeck.ui.shared.LocalSidebarNavigation
+import com.mark.wsdeck.ui.shared.SidebarMenuButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -39,8 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -76,7 +76,16 @@ fun CatalogScreen(
 ) {
     var browseAll by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf(SearchQuery()) }
+    val sidebar = LocalSidebarNavigation.current
+    LaunchedEffect(sidebar.titleRequest) {
+        sidebar.titleRequest?.let { code ->
+            query = SearchQuery(titleCode = code)
+            browseAll = false
+            sidebar.titleRequest = null
+        }
+    }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
+    var detailHistory by remember { mutableStateOf<List<Card>>(emptyList()) }
     var detail by remember { mutableStateOf<Card?>(null) }
     var showFilter by remember { mutableStateOf(false) }
     var showDeckQuickView by remember { mutableStateOf(false) }
@@ -129,33 +138,16 @@ fun CatalogScreen(
         query = SearchQuery()
     }
 
-    // 選了作品/商品之後，整個畫面往右滑就退回作品選單——這裡沒有真正的
-    // NavController 堆疊可以回退（切作品是靠 query 狀態切換，不是 push
-    // 新畫面），用手勢直接把 query 重置回去模擬「回上一頁」的效果，
-    // 對應 iOS CardBrowserView 那邊掛在 navigationDestination 上的
-    // swipeToGoBack()。只有明顯偏水平的右滑才觸發，不要跟垂直捲動搶手勢。
     Column(
-        Modifier
-            .fillMaxSize()
-            .pointerInput(query.titleCode) {
-                if (query.titleCode == null) return@pointerInput
-                var totalDrag = 0f
-                var totalVertical = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = { totalDrag = 0f; totalVertical = 0f },
-                    onHorizontalDrag = { change, dragAmount ->
-                        totalDrag += dragAmount
-                        totalVertical += change.positionChange().y
-                        change.consume()
-                    },
-                    onDragEnd = {
-                        if (totalDrag > 80f && kotlin.math.abs(totalVertical) < 60f) {
-                            query = SearchQuery()
-                        }
-                    },
-                )
-            },
+        Modifier.fillMaxSize().swipeBack(enabled = !showsGallery) {
+            browseAll = false
+            query = SearchQuery()
+        },
     ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            SidebarMenuButton()
+            Text("圖鑑", style = MaterialTheme.typography.titleLarge)
+        }
         if (!showsGallery) ActiveDeckPickerRow(
             decks = decks,
             activeDeck = activeDeck,
@@ -218,8 +210,12 @@ fun CatalogScreen(
         CardDetailSheet(
             card, results, repo, networkPolicy, appearance,
             activeDeck, deckRepo, aiChat,
-            onSelectRelated = { detail = it },
-            onDismiss = { detail = null },
+            onSelectRelated = { from, related -> detailHistory = detailHistory + from; detail = related },
+            onBack = {
+                if (detailHistory.isEmpty()) detail = null
+                else { detail = detailHistory.last(); detailHistory = detailHistory.dropLast(1) }
+            },
+            onDismiss = { detail = null; detailHistory = emptyList() },
         )
     }
 
@@ -394,7 +390,7 @@ private fun ActiveDeckQuickView(
     val scope = rememberCoroutineScope()
     val items = remember(deck.entries) { groupByCard(deck.entries, cardRepo) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.swipeBack(onBack = onDismiss)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -875,7 +871,8 @@ private fun CardDetailSheet(
     activeDeck: DeckWithEntries?,
     deckRepo: DeckRepository,
     aiChat: com.mark.wsdeck.ui.ai.AIChatState,
-    onSelectRelated: (Card) -> Unit,
+    onSelectRelated: (Card, Card) -> Unit,
+    onBack: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val pages = remember(card.id, siblings) {
@@ -884,7 +881,9 @@ private fun CardDetailSheet(
     val initialPage = remember(card.id, pages) { pages.indexOfFirst { it.id == card.id }.coerceAtLeast(0) }
     val pagerState = rememberPagerState(initialPage = initialPage) { pages.size }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    LaunchedEffect(card.id) { pagerState.scrollToPage(initialPage) }
+
+    ModalBottomSheet(onDismissRequest = onBack, modifier = Modifier.swipeBack(onBack = onBack)) {
         Column {
             Row(
                 Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
@@ -922,7 +921,7 @@ private fun CardDetailSheet(
                     appearance = appearance,
                     activeDeck = activeDeck,
                     deckRepo = deckRepo,
-                    onSelectRelated = onSelectRelated,
+                    onSelectRelated = { related -> onSelectRelated(pages[pageIndex], related) },
                 )
             }
         }

@@ -1,5 +1,7 @@
 package com.mark.wsdeck.ui.notifications
 
+import com.mark.wsdeck.ui.shared.swipeBack
+import com.mark.wsdeck.ui.shared.SwipeBackAlertDialog as AlertDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -83,7 +85,7 @@ private fun AnnouncementListSheet(center: AnnouncementCenter, onDismiss: () -> U
 
     LaunchedEffect(Unit) { center.markAllRead() }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.swipeBack(onBack = onDismiss)) {
         Column(Modifier.padding(bottom = 24.dp)) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),

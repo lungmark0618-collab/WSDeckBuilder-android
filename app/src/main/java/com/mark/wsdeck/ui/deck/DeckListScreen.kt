@@ -1,8 +1,12 @@
 package com.mark.wsdeck.ui.deck
 
+import com.mark.wsdeck.ui.shared.SwipeBackAlertDialog as AlertDialog
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.mark.wsdeck.ui.shared.SidebarMenuButton
+import com.mark.wsdeck.ui.shared.LocalSidebarNavigation
+import com.mark.wsdeck.ui.shared.SidebarImportAction
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -141,6 +145,19 @@ fun DeckListScreen(
         }
     }
 
+    val sidebar = LocalSidebarNavigation.current
+    LaunchedEffect(sidebar.importRequest) {
+        val action = sidebar.importRequest ?: return@LaunchedEffect
+        sidebar.importRequest = null
+        when (action) {
+            SidebarImportAction.CAMERA -> showQRScanner = true
+            SidebarImportAction.PHOTO -> photoPicker.launch(
+                androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            SidebarImportAction.FILE -> filePicker.launch(arrayOf("text/plain", "*/*"))
+            SidebarImportAction.TEXT -> showPasteImport = true
+        }
+    }
+
     fun importPastedText(text: String) {
         showPasteImport = false
         scope.launch {
@@ -160,7 +177,7 @@ fun DeckListScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("牌組") }) },
+        topBar = { TopAppBar(navigationIcon = { SidebarMenuButton() }, title = { Text("牌組") }) },
         floatingActionButton = {
             Box {
                 FloatingActionButton(

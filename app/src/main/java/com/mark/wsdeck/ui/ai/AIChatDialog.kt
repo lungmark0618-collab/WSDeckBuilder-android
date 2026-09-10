@@ -18,7 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.mark.wsdeck.ui.shared.SwipeBackDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.mark.wsdeck.data.AIChatMessage
 import com.mark.wsdeck.data.RulesReference

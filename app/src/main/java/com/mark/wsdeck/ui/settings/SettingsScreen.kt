@@ -1,5 +1,7 @@
 package com.mark.wsdeck.ui.settings
 
+import com.mark.wsdeck.ui.shared.SwipeBackAlertDialog as AlertDialog
+import com.mark.wsdeck.ui.shared.SidebarMenuButton
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -95,7 +97,7 @@ fun SettingsScreen(
         if (networkUi.prefetchNeedsConfirmation) confirmPrefetch = target else startPrefetch(target)
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("設定") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(navigationIcon = { SidebarMenuButton() }, title = { Text("設定") }) }) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
