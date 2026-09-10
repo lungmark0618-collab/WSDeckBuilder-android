@@ -28,6 +28,28 @@ data class BrowsableSet(
 }
 
 /**
+ * 「探索作品」畫面的排序方式，對應 iOS 的 TitleSortOrder。等級／顏色／種類
+ * 這些卡片層級的條件對選作品沒有意義，這裡只提供跟「挑一部作品」真正相關
+ * 的排序依據。
+ */
+enum class TitleSortOrder {
+    /** 卡片數多的代表反覆會翻的熱門作品，當預設值 */
+    CARD_COUNT,
+    /** Bushiroad 的彈次編號（S108、S136…）全系列共用同一個流水號，數字愈大
+     *  愈晚發售，不必額外維護發售日期欄位就能猜出「哪些是最近出的」 */
+    NEWEST,
+    /** 中文筆劃排序，找不到想找的作品在哪、想照傳統字典順序翻的時候用 */
+    STROKE;
+
+    val label: String
+        get() = when (this) {
+            CARD_COUNT -> "卡片數（多→少）"
+            NEWEST -> "由新到舊"
+            STROKE -> "筆劃"
+        }
+}
+
+/**
  * 卡表載入與搜尋。對應 iOS 的 CardDatabase。
  *
  * 解 5.7 MB 的 JSON 在主執行緒做會卡住畫面數秒，所以 load() 是 suspend，
@@ -238,6 +260,23 @@ class CardRepository(private val context: Context) {
     fun traits(inScope: String): List<String> =
         cards(inScope).flatMap { it.traitsJP }.distinct().sorted()
 
+    /** 這個瀏覽範圍拆出的彈次選項（如 OVL 底下的 S62／S66／SE54…），對應 iOS
+     *  CardDatabase.waves(inScope:)。只有拆過彈的作品才有東西可選——只有 1
+     *  個彈次可選時回傳空清單，篩選頁才知道要整區藏起來，不然選了也等於沒選 */
+    fun waves(inScope: String): List<BrowsableSet> {
+        val scopeTitleCode = snapshot.browsableSets.firstOrNull { it.id == inScope }?.titleCode ?: inScope
+        val matches = snapshot.browsableSets.filter { it.titleCode == scopeTitleCode && it.productCode != null }
+        return if (matches.size > 1) matches else emptyList()
+    }
+
+    /** 這部作品目前收錄最新一波的商品代碼數字，供「探索作品」畫面「由新到舊」
+     *  排序用，對應 iOS CardDatabase.newestSetNumber(forTitleCode:)。Bushiroad
+     *  的彈次編號（如 S108、S136）全系列共用同一個流水號，數字愈大代表愈晚
+     *  發售，不必額外維護發售日期欄位 */
+    fun newestSetNumber(titleCode: String): Int =
+        snapshot.cards.filter { snapshot.titleByCardId[it.id] == titleCode }
+            .maxOfOrNull { numericSuffix(it.productCode) } ?: 0
+
     /**
      * 關鍵字比對依「像不像使用者要找的那張卡」分等第排序，不是比對到就照原始
      * 順序塞回去——不然打第一個字時，卡名裡有這個字的卡會被能力文字裡剛好有
@@ -263,6 +302,7 @@ class CardRepository(private val context: Context) {
             if (query.triggers.isNotEmpty() && card.trigger !in query.triggers) return@filter false
             if (query.traits.isNotEmpty() &&
                 query.traits.none { it in card.traitsJP }) return@filter false
+            if (query.waves.isNotEmpty() && card.productCode !in query.waves) return@filter false
             if (query.sources.isNotEmpty() && card.source !in query.sources) return@filter false
             true
         }

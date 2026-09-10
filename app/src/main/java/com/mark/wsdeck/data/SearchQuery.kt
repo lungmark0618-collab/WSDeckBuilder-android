@@ -11,12 +11,15 @@ data class SearchQuery(
     val sources: Set<CardSource> = emptySet(),
     /** 作品篩選；null = 全部 */
     val titleCode: String? = null,
+    /** 彈次（商品代碼，如 "OVL/S66"）篩選，拆很多彈、卡號雜的作品選了「不分彈」
+     *  之後用來縮小範圍。空 = 不篩選 */
+    val waves: Set<String> = emptySet(),
     val ownership: OwnershipFilter = OwnershipFilter.ALL,
 ) {
     val hasActiveFilters: Boolean
         get() = levels.isNotEmpty() || colors.isNotEmpty() || types.isNotEmpty() ||
             triggers.isNotEmpty() || traits.isNotEmpty() || sources.isNotEmpty() ||
-            titleCode != null || ownership != OwnershipFilter.ALL
+            titleCode != null || waves.isNotEmpty() || ownership != OwnershipFilter.ALL
 
     companion object {
         /** 卡號比對忽略大小寫與 `/` `-` */

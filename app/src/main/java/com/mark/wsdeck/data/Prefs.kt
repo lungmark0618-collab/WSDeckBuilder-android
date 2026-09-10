@@ -25,6 +25,11 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEY_CATALOG_USES_GRID, true)
         set(value) = prefs.edit().putBoolean(KEY_CATALOG_USES_GRID, value).apply()
 
+    /** 「探索作品」畫面的排序方式，對應 iOS 的 @AppStorage("titleGallerySortOrder") */
+    var titleGallerySortOrder: TitleSortOrder
+        get() = enumOrDefault(KEY_TITLE_GALLERY_SORT_ORDER, TitleSortOrder.CARD_COUNT)
+        set(value) = prefs.edit().putString(KEY_TITLE_GALLERY_SORT_ORDER, value.name).apply()
+
     /** 「問 AI」浮動按鈕開關，對應 iOS 的 @AppStorage("aiChatButtonEnabled") */
     var aiChatButtonEnabled: Boolean
         get() = prefs.getBoolean(KEY_AI_CHAT_BUTTON_ENABLED, true)
@@ -169,6 +174,7 @@ class Prefs(context: Context) {
         private const val KEY_ACTIVE_DECK = "active_deck_uuid"
         private const val KEY_DECK_USES_GRID = "deck_uses_grid"
         private const val KEY_CATALOG_USES_GRID = "catalog_uses_grid"
+        private const val KEY_TITLE_GALLERY_SORT_ORDER = "title_gallery_sort_order"
         private const val KEY_AI_CHAT_BUTTON_ENABLED = "ai_chat_button_enabled"
         private const val KEY_CARD_DATA_CHECKED_AT = "card_data_last_checked_at"
         private const val KEY_ANNOUNCEMENT_READ_IDS = "announcement_read_ids"

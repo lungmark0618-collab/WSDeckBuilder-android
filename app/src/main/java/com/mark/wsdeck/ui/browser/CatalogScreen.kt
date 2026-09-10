@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -94,6 +96,8 @@ fun CatalogScreen(
     val prefs = remember { Prefs(context) }
     // 搜尋結果格子／清單切換，跟牌組卡表的設定分開記，對應 iOS CardCatalogView 的顯示模式
     var usesGrid by remember { mutableStateOf(prefs.catalogUsesGrid) }
+    // 「探索作品」畫面的排序方式，對應 iOS 的 sortOrderRaw
+    var sortOrder by remember { mutableStateOf(prefs.titleGallerySortOrder) }
 
     val decks by deckRepo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
     var activeDeckUuid by remember { mutableStateOf(prefs.activeDeckUuid) }
@@ -161,10 +165,19 @@ fun CatalogScreen(
             pinnedTitle = query.titleCode?.let { code -> repo.scopeDisplayName(code) } ?: if (browseAll) "全部卡片" else null,
             hasActiveFilters = query.hasActiveFilters,
             usesGrid = usesGrid,
+            // 探索作品畫面沒有等級／顏色可篩，篩選鈕在這裡換成排序選單——
+            // 挑作品跟挑卡片是兩件事，見 TitleSortOrder 開頭註解
+            showsGallery = showsGallery,
+            sortOrder = sortOrder,
             onKeyword = { query = query.copy(keyword = it) },
             onClearTitle = { browseAll = false; query = SearchQuery() },
             onOpenFilter = {
                 showFilter = true
+                onboarding.notify(OnboardingStep.FILTER)
+            },
+            onSortOrderChange = {
+                sortOrder = it
+                prefs.titleGallerySortOrder = it
                 onboarding.notify(OnboardingStep.FILTER)
             },
             onToggleGrid = {
@@ -183,7 +196,8 @@ fun CatalogScreen(
         }
 
         if (showsGallery) {
-            TitleGallery(repo.snapshot.browsableSets, repo.snapshot.cards.size, favorites, onAllCards = { browseAll = true; query = SearchQuery() }) {
+            TitleGallery(repo.snapshot.browsableSets, repo.snapshot.cards.size, favorites, repo,
+                sortOrder = sortOrder, onAllCards = { browseAll = true; query = SearchQuery() }) {
                 query = SearchQuery(titleCode = it)
             }
         } else if (results.isEmpty()) {
@@ -423,9 +437,12 @@ private fun SearchBarRow(
     pinnedTitle: String?,
     hasActiveFilters: Boolean,
     usesGrid: Boolean,
+    showsGallery: Boolean,
+    sortOrder: TitleSortOrder,
     onKeyword: (String) -> Unit,
     onClearTitle: () -> Unit,
     onOpenFilter: () -> Unit,
+    onSortOrderChange: (TitleSortOrder) -> Unit,
     onToggleGrid: () -> Unit,
     announcements: AnnouncementCenter,
     onboarding: OnboardingState,
@@ -447,18 +464,43 @@ private fun SearchBarRow(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
-            FilledIconButton(
-                onClick = onOpenFilter,
-                colors = if (hasActiveFilters) {
-                    IconButtonDefaults.filledIconButtonColors()
-                } else {
-                    IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                modifier = Modifier.onboardingAnchor(OnboardingStep.FILTER, onboarding),
-            ) { Icon(Icons.Filled.FilterList, contentDescription = "篩選") }
+            if (showsGallery) {
+                var sortMenuOpen by remember { mutableStateOf(false) }
+                Box {
+                    FilledIconButton(
+                        onClick = { sortMenuOpen = true },
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        modifier = Modifier.onboardingAnchor(OnboardingStep.FILTER, onboarding),
+                    ) { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "排序方式") }
+                    DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
+                        TitleSortOrder.entries.forEach { order ->
+                            DropdownMenuItem(
+                                text = { Text(order.label) },
+                                leadingIcon = if (order == sortOrder) {
+                                    { Icon(Icons.Filled.Check, contentDescription = null) }
+                                } else null,
+                                onClick = { onSortOrderChange(order); sortMenuOpen = false },
+                            )
+                        }
+                    }
+                }
+            } else {
+                FilledIconButton(
+                    onClick = onOpenFilter,
+                    colors = if (hasActiveFilters) {
+                        IconButtonDefaults.filledIconButtonColors()
+                    } else {
+                        IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    modifier = Modifier.onboardingAnchor(OnboardingStep.FILTER, onboarding),
+                ) { Icon(Icons.Filled.FilterList, contentDescription = "篩選") }
+            }
             Spacer(Modifier.width(4.dp))
             // 搜尋結果格子／清單切換，對應 iOS CardCatalogView 工具列的顯示模式按鈕
             IconButton(onClick = onToggleGrid) {
@@ -504,6 +546,7 @@ private fun ActiveFilterBar(query: SearchQuery, sets: List<CardSetMeta>, onClear
         if (query.triggers.isNotEmpty()) add("判定×${query.triggers.size}")
         if (query.sources.isNotEmpty()) add(query.sources.joinToString("/") { it.label })
         if (query.traits.isNotEmpty()) add(query.traits.sorted().joinToString("/"))
+        if (query.waves.isNotEmpty()) add("彈次×${query.waves.size}")
         if (query.ownership != OwnershipFilter.ALL) add(query.ownership.label)
     }
     if (parts.isEmpty()) return
@@ -528,13 +571,18 @@ private fun TitleGallery(
     sets: List<BrowsableSet>,
     totalCount: Int,
     favorites: FavoriteTitlesStore,
+    repo: CardRepository,
+    sortOrder: TitleSortOrder,
     onAllCards: () -> Unit,
     onSelect: (String) -> Unit,
 ) {
-    // 卡多的作品排前面——照代號排等於隨機順序。拆很多彈的作品（如 OVERLORD）
-    // 另外併一張「不分彈」的卡片：只認得卡面、不知道自己要找哪一彈的人，可以
-    // 一次瀏覽整個系列，不用一彈一彈點進去找，對應 iOS TitleGalleryView
-    val ordered = remember(sets) {
+    // 拆很多彈的作品（如 OVERLORD）另外併一張「不分彈」的卡片：只認得卡面、
+    // 不知道自己要找哪一彈的人，可以一次瀏覽整個系列，不用一彈一彈點進去找，
+    // 對應 iOS TitleGalleryView。排序依 sortOrder 而定，見 TitleSortOrder
+    val strokeCollator = remember {
+        android.icu.text.Collator.getInstance(java.util.Locale.forLanguageTag("zh-Hant-u-co-stroke"))
+    }
+    val ordered = remember(sets, sortOrder) {
         val grouped = sets.groupBy { it.titleCode }
         val combined = grouped.values.mapNotNull { group ->
             val sample = group.firstOrNull() ?: return@mapNotNull null
@@ -546,7 +594,13 @@ private fun TitleGallery(
                 productCode = null, waveLabel = "不分彈",
             )
         }
-        (sets + combined).sortedByDescending { it.cardCount }
+        val all = sets + combined
+        when (sortOrder) {
+            TitleSortOrder.CARD_COUNT -> all.sortedByDescending { it.cardCount }
+            TitleSortOrder.NEWEST -> all.sortedByDescending { repo.newestSetNumber(it.titleCode) }
+            TitleSortOrder.STROKE -> all.sortedWith(
+                compareBy { strokeCollator.getCollationKey(it.titleNameZH) })
+        }
     }
     val favoriteSets = ordered.filter { favorites.isFavorite(it.id) }
     val otherSets = ordered.filter { !favorites.isFavorite(it.id) }

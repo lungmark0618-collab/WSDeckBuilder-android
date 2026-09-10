@@ -32,8 +32,8 @@ enum class OnboardingStep(val title: String, val body: String, val tab: Onboardi
         OnboardingTab.CATALOG,
     ),
     FILTER(
-        "篩選條件",
-        "點篩選，可以用等級、顏色、種類縮小範圍。",
+        "排序作品",
+        "點右上角，可以依卡片數、由新到舊、或筆劃排序作品清單。",
         OnboardingTab.CATALOG,
     ),
     NOTIFICATIONS(

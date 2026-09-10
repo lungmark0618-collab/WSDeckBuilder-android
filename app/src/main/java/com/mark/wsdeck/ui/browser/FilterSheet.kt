@@ -52,6 +52,14 @@ fun FilterSheet(
         val name = query.titleCode?.let { code -> repo.scopeDisplayName(code) }
         if (name != null) "特徵（$name）" else "特徵"
     }
+    // 拆很多彈的作品（如 OVERLORD 有 S62／S66／SE54…）卡號雜，只認得卡面、
+    // 不知道自己在哪一彈時，靠這個縮小範圍。只有選了作品才會有東西可選
+    val availableWaves = remember(query.titleCode) {
+        query.titleCode?.let { repo.waves(inScope = it) } ?: emptyList()
+    }
+    fun waveLabel(code: String): String =
+        availableWaves.firstOrNull { it.id == code }
+            ?.let { it.waveLabel ?: it.id.substringAfterLast('/') } ?: code
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
@@ -172,6 +180,26 @@ fun FilterSheet(
                                         onQueryChange(query.copy(
                                             traits = if (on) query.traits - trait
                                                     else query.traits + trait))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (availableWaves.isNotEmpty()) {
+                        val waveCodes = availableWaves.map { it.id }
+                        MultiSelectFilterCard("彈次", query.waves.size, waveCodes.size,
+                            onSelectAll = { onQueryChange(query.copy(waves = waveCodes.toSet())) },
+                            onClear = { onQueryChange(query.copy(waves = emptySet())) },
+                        ) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                waveCodes.forEach { code ->
+                                    val on = code in query.waves
+                                    Chip(waveLabel(code), on) {
+                                        onQueryChange(query.copy(
+                                            waves = if (on) query.waves - code
+                                                    else query.waves + code))
                                     }
                                 }
                             }
