@@ -75,6 +75,8 @@ fun CatalogScreen(
     onboarding: OnboardingState,
     favorites: FavoriteTitlesStore,
     aiChat: com.mark.wsdeck.ui.ai.AIChatState,
+    editingDeckUuid: String? = null,
+    onFinishEditing: () -> Unit = {},
 ) {
     var browseAll by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf(SearchQuery()) }
@@ -100,8 +102,10 @@ fun CatalogScreen(
     var sortOrder by remember { mutableStateOf(prefs.titleGallerySortOrder) }
 
     val decks by deckRepo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
-    var activeDeckUuid by remember { mutableStateOf(prefs.activeDeckUuid) }
-    val activeDeck = decks.firstOrNull { it.deck.uuid == activeDeckUuid }
+    val activeDeck = decks.firstOrNull { it.deck.uuid == editingDeckUuid }
+    LaunchedEffect(editingDeckUuid) {
+        if (editingDeckUuid != null) prefs.activeDeckUuid = editingDeckUuid
+    }
 
     val collection by collectionRepo.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
     val collectionIndex = remember(collection) { CollectionStore.index(collection) }
@@ -137,29 +141,27 @@ fun CatalogScreen(
         }
     }
 
-    BackHandler(enabled = !showsGallery && detail == null && !showFilter && !showDeckQuickView) {
-        browseAll = false
-        query = SearchQuery()
+    fun goBack() {
+        if (!showsGallery) { browseAll = false; query = SearchQuery() }
+        else if (editingDeckUuid != null) onFinishEditing()
     }
+    BackHandler(enabled = (!showsGallery || editingDeckUuid != null) && detail == null && !showFilter && !showDeckQuickView) { goBack() }
 
     Column(
-        Modifier.fillMaxSize().swipeBack(enabled = !showsGallery) {
-            browseAll = false
-            query = SearchQuery()
-        },
+        Modifier.fillMaxSize().swipeBack(enabled = !showsGallery || editingDeckUuid != null) { goBack() },
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            SidebarMenuButton()
-            Text("圖鑑", style = MaterialTheme.typography.titleLarge)
+            if (editingDeckUuid == null) {
+                SidebarMenuButton()
+                Text("圖鑑", style = MaterialTheme.typography.titleLarge)
+            } else {
+                Column(Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(activeDeck?.let { "加入「${it.deck.name}」" } ?: "加入卡片", style = MaterialTheme.typography.titleMedium)
+                    activeDeck?.let { Text("${it.totalCount} 張・變更自動儲存", style = MaterialTheme.typography.bodySmall) }
+                }
+                TextButton(onClick = onFinishEditing) { Text("完成") }
+            }
         }
-        if (!showsGallery) ActiveDeckPickerRow(
-            decks = decks,
-            activeDeck = activeDeck,
-            onSelect = { uuid ->
-                activeDeckUuid = uuid
-                prefs.activeDeckUuid = uuid
-            },
-        )
         SearchBarRow(
             keyword = query.keyword,
             pinnedTitle = query.titleCode?.let { code -> repo.scopeDisplayName(code) } ?: if (browseAll) "全部卡片" else null,
@@ -1163,10 +1165,11 @@ private fun DeckControls(
         }
         val total = card.printings.sumOf { entryByPrinting[it.id] ?: 0 }
         if (total > 0) {
+            val limit = DeckValidator.nameLimit(card, LocalDeckBuildingRules.current)
             Text(
-                "合計 $total / ${DeckValidator.NAME_LIMIT} 上限",
+                limit?.let { "合計 $total / $it 上限" } ?: "合計 $total（同名無上限）",
                 style = MaterialTheme.typography.labelMedium,
-                color = if (total > DeckValidator.NAME_LIMIT) MaterialTheme.colorScheme.error
+                color = if (limit != null && total > limit) MaterialTheme.colorScheme.error
                        else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

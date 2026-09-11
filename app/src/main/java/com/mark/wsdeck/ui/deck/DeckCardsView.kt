@@ -55,7 +55,7 @@ fun DeckCardsTab(
     val sections = remember(items) { buildLevelSections(items) }
     if (items.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
-            Text("牌組是空的，到「圖鑑」分頁選擇此牌組後加卡",
+            Text("牌組是空的，點上方「加入卡片」開始選牌",
                 style = MaterialTheme.typography.bodyMedium)
         }
         return
@@ -142,6 +142,7 @@ private fun ReorderableSection(
     // 卡尺寸不同）時公式會算不準，殘留誤差每換一次位就多一點，滑順一點就整個
     // 雪崩到底部（這次抓到的 bug，上一版用「目標原本位置」硬算補償還是不夠準）
     var pendingSwapOldTop by remember { mutableStateOf<Float?>(null) }
+    val deckRules = LocalDeckBuildingRules.current
 
     Column {
         order.forEach { item ->
@@ -152,7 +153,8 @@ private fun ReorderableSection(
             // 跟著被砍掉，變成收到 onDragCancel 而不是 onDragEnd，onReordered
             // 永遠不會被呼叫，拖曳看起來有動但放開後全部還原（之前抓到的 bug）
             key(cardId) {
-            val overLimit = DeckValidator.nameCount(item.card, allItems) > DeckValidator.NAME_LIMIT
+            val nameLimit = DeckValidator.nameLimit(item.card, deckRules)
+            val overLimit = nameLimit != null && DeckValidator.nameCount(item.card, allItems) > nameLimit
             val displayPrinting = item.card.printings.firstOrNull { (entryByPrinting[it.id] ?: 0) > 0 }
                 ?: item.card.defaultPrinting
             val expanded = expandedIds[cardId] ?: false

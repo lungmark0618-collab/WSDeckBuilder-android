@@ -58,8 +58,8 @@ enum class OnboardingStep(val title: String, val body: String, val tab: Onboardi
     ),
     ADD_TO_DECK(
         "加入牌組",
-        "在卡片上點「＋」，把它加進剛剛建立的牌組。",
-        OnboardingTab.CATALOG,
+        "打開剛建立的牌組，點「加入卡片」，再在卡片上按「＋」。圖鑑只用來查牌。",
+        OnboardingTab.DECKS,
     ),
     APPEARANCE(
         "外觀設定",

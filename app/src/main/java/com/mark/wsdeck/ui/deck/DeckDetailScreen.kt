@@ -45,6 +45,7 @@ fun DeckDetailScreen(
     deckRepo: DeckRepository,
     collectionRepo: CollectionRepository,
     networkPolicy: NetworkPolicy,
+    onAddCards: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     val deckState by deckRepo.observeDeck(uuid).collectAsStateWithLifecycle(initialValue = null)
@@ -84,7 +85,8 @@ fun DeckDetailScreen(
         }
         scope.launch { deckRepo.setCardOrder(deck.deck, fullOrder) }
     }
-    val validation = remember(items) { DeckValidator.validate(items) }
+    val deckRules = LocalDeckBuildingRules.current
+    val validation = remember(items, deckRules) { DeckValidator.validate(items, deckRules) }
 
     val collection by collectionRepo.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
     val collectionIndex = remember(collection) { CollectionStore.index(collection) }
@@ -172,6 +174,7 @@ fun DeckDetailScreen(
                     }
                 },
                 actions = {
+                    TextButton(onClick = onAddCards) { Text("加入卡片") }
                     // 卡表模式才需要切換圖片／清單
                     if (mode == Mode.CARDS) {
                         IconButton(onClick = {

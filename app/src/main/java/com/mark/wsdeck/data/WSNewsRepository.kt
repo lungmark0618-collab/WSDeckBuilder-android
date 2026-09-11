@@ -11,6 +11,11 @@ import kotlinx.serialization.Serializable
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import android.os.SystemClock
+import android.util.AtomicFile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import java.util.concurrent.TimeUnit
 
 /**
  * 官網公告一則：新商品、卡表更新、大會、規則異動——見
@@ -50,8 +55,13 @@ private data class WSNewsFeed(val items: List<WSNewsItem> = emptyList())
  * 跟 DataUpdater／AnnouncementCenter 同一套「線上抓、本機快取、離線也能
  * 看上次結果」的作法。
  */
-class WSNewsRepository(private val context: Context) {
-    private val client = OkHttpClient()
+class WSNewsRepository(
+    private val context: Context,
+    private val client: OkHttpClient = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build(),
+) {
+    private val refreshMutex = Mutex()
+    private var lastAttemptAt: Long? = null
+    private var lastSuccessAt = 0L
     private val cacheFile: File get() = File(context.cacheDir, "ws_news_cache.json")
 
     data class UiState(
@@ -63,6 +73,8 @@ class WSNewsRepository(private val context: Context) {
     private val _ui = MutableStateFlow(UiState(items = loadCache()))
     val ui: StateFlow<UiState> = _ui
 
+    init { if (_ui.value.items.isNotEmpty()) lastSuccessAt = cacheFile.lastModified() }
+
     companion object {
         private const val NEWS_URL =
             "https://raw.githubusercontent.com/lungmark0618-collab/WSDeckBuilder-data/main/ws_news.json"
@@ -70,16 +82,22 @@ class WSNewsRepository(private val context: Context) {
 
     private fun loadCache(): List<WSNewsItem> =
         try {
-            if (cacheFile.exists()) cardJson.decodeFromString<WSNewsFeed>(cacheFile.readText()).items
+            if (cacheFile.exists()) cardJson.decodeFromString<WSNewsFeed>(AtomicFile(cacheFile).openRead().bufferedReader().use { it.readText() }).items
             else emptyList()
         } catch (e: Exception) {
             emptyList()
         }
 
-    suspend fun refresh() = withContext(Dispatchers.IO) {
-        if (_ui.value.isLoading) return@withContext
-        _ui.update { it.copy(isLoading = true) }
+    suspend fun refresh(force: Boolean = true) = withContext(Dispatchers.IO) {
+        if (!refreshMutex.tryLock()) return@withContext
         try {
+            if (!force) {
+                val age = System.currentTimeMillis() - lastSuccessAt
+                if (_ui.value.items.isNotEmpty() && age in 0 until 15 * 60_000L) return@withContext
+                if (lastAttemptAt?.let { SystemClock.elapsedRealtime() - it < 60_000 } == true) return@withContext
+            }
+            lastAttemptAt = SystemClock.elapsedRealtime()
+            _ui.update { it.copy(isLoading = true) }
             val request = Request.Builder()
                 .url(NEWS_URL)
                 .header("Cache-Control", "no-cache")
@@ -89,13 +107,28 @@ class WSNewsRepository(private val context: Context) {
                 response.body?.string() ?: throw java.io.IOException("沒有回應內容")
             }
             val feed = cardJson.decodeFromString<WSNewsFeed>(body)
-            cacheFile.writeText(body)
+            if (feed.items.isEmpty()) throw java.io.IOException("公告清單為空")
+            // 磁碟暫時寫入失敗仍可顯示線上資料；原子寫入保留舊快取。
+            val cache = AtomicFile(cacheFile)
+            var stream: java.io.FileOutputStream? = null
+            try {
+                stream = cache.startWrite()
+                stream.write(body.toByteArray(Charsets.UTF_8))
+                cache.finishWrite(stream)
+            } catch (_: java.io.IOException) { cache.failWrite(stream) }
+            lastSuccessAt = System.currentTimeMillis()
             _ui.update { it.copy(items = feed.items, isLoading = false, errorMessage = null) }
+        } catch (e: CancellationException) {
+            lastAttemptAt = null
+            throw e
         } catch (e: Exception) {
             // 抓不到就沿用快取，不拿錯誤訊息打斷使用者——首頁的公告不是關鍵功能
             _ui.update {
                 it.copy(isLoading = false, errorMessage = "抓不到最新公告，顯示的是上次快取的內容。")
             }
+        } finally {
+            _ui.update { it.copy(isLoading = false) }
+            refreshMutex.unlock()
         }
     }
 }

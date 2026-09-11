@@ -81,4 +81,52 @@ class DeckValidatorTest {
         )
         assertTrue(DeckValidator.validate(items).mixedTitles)
     }
+
+    // MARK: - 組牌限制例外表（同名可超過4張、複數卡名合計限制）
+
+    @Test
+    fun `same name exception allows a fixed limit above four`() {
+        val c = card("OVL/S99-047", "黒い仔山羊")
+        val rules = NameLimitRules(
+            defaultLimit = 4,
+            groupByName = mapOf("黒い仔山羊" to NameLimitRules.Group(setOf("黒い仔山羊"), 5)),
+        )
+        val result = DeckValidator.validate(listOf(CardCount(c, 5)), rules)
+        assertTrue(result.namesOK)
+        assertEquals(5, DeckValidator.nameLimit(c, rules))
+    }
+
+    @Test
+    fun `same name exception allows unlimited copies`() {
+        val c = card("OVL/S99-090", "ゴブリン軍楽隊")
+        val rules = NameLimitRules(
+            defaultLimit = 4,
+            groupByName = mapOf("ゴブリン軍楽隊" to NameLimitRules.Group(setOf("ゴブリン軍楽隊"), null)),
+        )
+        val result = DeckValidator.validate(listOf(CardCount(c, 20)), rules)
+        assertTrue(result.namesOK)
+        assertEquals(null, DeckValidator.nameLimit(c, rules))
+    }
+
+    @Test
+    fun `combined name limit pools counts across different names`() {
+        val base = card("PJS/S109-114", "えむ流？ダンスの極意！ 小豆沢こはね")
+        val awakened = card("PJS/S109-999", "Beat Eater/Awake Now")
+        val group = NameLimitRules.Group(setOf(base.nameJP, awakened.nameJP), 4)
+        val rules = NameLimitRules(
+            defaultLimit = 4,
+            groupByName = mapOf(base.nameJP to group, awakened.nameJP to group),
+        )
+        val withinLimit = listOf(CardCount(base, 2), CardCount(awakened, 2))
+        assertTrue(DeckValidator.validate(withinLimit, rules).namesOK)
+
+        val overLimit = listOf(CardCount(base, 3), CardCount(awakened, 2))
+        assertFalse(DeckValidator.validate(overLimit, rules).namesOK)
+    }
+
+    @Test
+    fun `name limit defaults to standard without exception`() {
+        val c = card("T/X01-001", "普通卡")
+        assertEquals(4, DeckValidator.nameLimit(c, NameLimitRules.standard))
+    }
 }

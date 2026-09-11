@@ -30,6 +30,8 @@ import com.mark.wsdeck.data.AppearanceSettings
 import com.mark.wsdeck.data.CardRepository
 import com.mark.wsdeck.data.CollectionRepository
 import com.mark.wsdeck.data.DataUpdater
+import com.mark.wsdeck.data.DeckBuildingRulesRepository
+import com.mark.wsdeck.data.LocalDeckBuildingRules
 import com.mark.wsdeck.data.DeckImageExporter
 import com.mark.wsdeck.data.DeckRepository
 import com.mark.wsdeck.data.FavoriteTitlesStore
@@ -82,6 +84,7 @@ class MainActivity : ComponentActivity() {
         val newsCategoryFilter = NewsCategoryFilterStore(applicationContext)
         val newsRepo = WSNewsRepository(applicationContext)
         val waveNameRepo = WaveNameRepository(applicationContext)
+        val deckRulesRepo = DeckBuildingRulesRepository(applicationContext)
         // App 存活期間都掛著：使用者選「僅用 Wi-Fi 時下載」排隊的那批，
         // 一連回不受限的網路就自動接著下載，不用使用者自己想到要回來再點一次
         networkPolicy.setPrefetchResumeHandler { printings ->
@@ -95,6 +98,7 @@ class MainActivity : ComponentActivity() {
                 AppRoot(
                     cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements,
                     appearance, networkPolicy, onboarding, favorites, pinnedDecks, newsCategoryFilter, newsRepo, waveNameRepo,
+                    deckRulesRepo,
                     deepLinkUri = pendingDeepLink,
                     onDeepLinkConsumed = { pendingDeepLink = null },
                 )
@@ -138,18 +142,21 @@ private fun AppRoot(
     newsCategoryFilter: NewsCategoryFilterStore,
     newsRepo: WSNewsRepository,
     waveNameRepo: WaveNameRepository,
+    deckRulesRepo: DeckBuildingRulesRepository,
     deepLinkUri: android.net.Uri? = null,
     onDeepLinkConsumed: () -> Unit = {},
 ) {
     // null = 還在載入。5.7 MB 的 JSON 要解一下，先蓋住空畫面
     var loaded by remember { mutableStateOf<Boolean?>(null) }
 
-    suspend fun checkForUpdates() {
+    suspend fun checkForUpdates() = kotlinx.coroutines.coroutineScope {
+        val newsRefresh = launch { newsRepo.refresh(force = false) }
         updater.checkSilently(cardRepo)
         (updater.ui.value.state as? DataUpdater.State.UpdateAvailable)?.let {
             announcements.noteDataUpdates(it.pending)
         }
         announcements.checkSilently()
+        newsRefresh.join()
     }
 
     LaunchedEffect(Unit) {
@@ -164,6 +171,8 @@ private fun AppRoot(
         if (waveNameRepo.refresh()) {
             cardRepo.applyWaveNameOverrides(waveNameRepo.labels)
         }
+        // 組牌限制例外表（同名可超過4張、複數卡名合計限制）同一套背景查新版
+        deckRulesRepo.refresh()
     }
 
     // 只有冷啟動才會跑上面那個 LaunchedEffect(Unit)，使用者切去別的 App 再切
@@ -192,7 +201,9 @@ private fun AppRoot(
         false -> Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
             Text(cardRepo.loadError ?: "資料載入失敗")
         }
-        true -> MainScaffold(cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding, favorites, pinnedDecks, newsCategoryFilter, newsRepo)
+        true -> CompositionLocalProvider(LocalDeckBuildingRules provides deckRulesRepo.rules) {
+            MainScaffold(cardRepo, deckRepo, collectionRepo, updater, appUpdater, announcements, appearance, networkPolicy, onboarding, favorites, pinnedDecks, newsCategoryFilter, newsRepo)
+        }
     }
 
     val appUpdateState by appUpdater.state.collectAsStateWithLifecycle()
@@ -298,13 +309,7 @@ private fun MainScaffold(
         drawerScope.launch { drawerState.open() }
     } }
     val sidebarDecks by deckRepo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
-    fun navigateMain(route: String) {
-        navController.navigate(route) {
-            popUpTo(navController.graph.findStartDestination().id) { saveState = false }
-            launchSingleTop = true
-            restoreState = false
-        }
-    }
+    fun navigateMain(route: String) = navController.navigateToMainTab(route)
     fun closeThen(action: () -> Unit) {
         drawerScope.launch { drawerState.close(); action() }
     }
@@ -354,7 +359,7 @@ private fun MainScaffold(
             // 但底部列仍要顯示、且判斷「牌組」分頁為選取狀態
             val selectedTab = tabs.firstOrNull { tab ->
                 currentDestination?.hierarchy?.any {
-                    it.route == tab.route || (tab == Tab.Decks && it.route == "deck/{uuid}") ||
+                    it.route == tab.route || (tab == Tab.Decks && (it.route == "deck/{uuid}" || it.route == "deck/{uuid}/cards")) ||
                         (tab == Tab.Settings && it.route == "settings/appearance")
                 } == true
             } ?: Tab.Home
@@ -362,11 +367,7 @@ private fun MainScaffold(
                 items = tabs.filter { it != Tab.Settings }.map { GlassTabBarItem(it, it.label, it.icon) },
                 selected = selectedTab,
                 onSelect = { tab ->
-                    navController.navigate(tab.route) {
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
+                    navigateMain(tab.route)
                 },
             )
         },
@@ -389,7 +390,14 @@ private fun MainScaffold(
             }
             composable("deck/{uuid}") { backStackEntry ->
                 val uuid = backStackEntry.arguments?.getString("uuid") ?: return@composable
-                DeckDetailScreen(uuid, cardRepo, deckRepo, collectionRepo, networkPolicy) { navController.popBackStack() }
+                DeckDetailScreen(uuid, cardRepo, deckRepo, collectionRepo, networkPolicy,
+                    onAddCards = { navController.navigate("deck/$uuid/cards") }) { navController.popBackStack() }
+            }
+            composable("deck/{uuid}/cards") { entry ->
+                val uuid = entry.arguments?.getString("uuid") ?: return@composable
+                CatalogScreen(cardRepo, deckRepo, collectionRepo, announcements, appearance, networkPolicy,
+                    onboarding, favorites, aiChat, editingDeckUuid = uuid,
+                    onFinishEditing = { navController.popBackStack() })
             }
             composable(Tab.Settings.route) {
                 SettingsScreen(

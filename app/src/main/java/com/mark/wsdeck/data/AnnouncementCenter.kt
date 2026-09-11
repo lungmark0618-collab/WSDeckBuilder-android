@@ -11,6 +11,9 @@ import kotlinx.serialization.Serializable
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import java.util.concurrent.TimeUnit
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -44,6 +47,8 @@ enum class NotificationBadgeStyle(val label: String) {
 class AnnouncementCenter(context: Context, private val networkPolicy: NetworkPolicy) {
 
     data class UiState(
+        val isLoading: Boolean = false,
+        val errorMessage: String? = null,
         val serverItems: List<Announcement> = emptyList(),
         /** 本機自己合成的通知（卡表更新／新作品），對應 iOS 的 localItems */
         val localItems: List<Announcement> = emptyList(),
@@ -55,19 +60,22 @@ class AnnouncementCenter(context: Context, private val networkPolicy: NetworkPol
         /** 兩邊合併、按日期排序、濾掉刪過的，畫面只認這個，不分來源 */
         val items: List<Announcement>
             get() = (serverItems + localItems)
+                .distinctBy { it.id }
                 .filter { it.id !in deletedIds }
-                .sortedByDescending { it.date }
+                .sortedWith(compareByDescending<Announcement> { it.date }.thenByDescending { it.id })
         val unreadCount: Int get() = items.count { it.id !in readIds }
         fun isUnread(item: Announcement) = item.id !in readIds
     }
 
     private val prefs = Prefs(context)
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
+    private val refreshMutex = Mutex()
+    private var lastAttemptAt = 0L
 
     private val _ui = MutableStateFlow(
         UiState(
             serverItems = prefs.cachedAnnouncements,
-            localItems = prefs.cachedLocalAnnouncements,
+            localItems = compactLocalAnnouncements(prefs.cachedLocalAnnouncements),
             readIds = prefs.announcementReadIds,
             deletedIds = prefs.announcementDeletedIds,
             badgeStyle = prefs.notificationBadgeStyle,
@@ -81,13 +89,19 @@ class AnnouncementCenter(context: Context, private val networkPolicy: NetworkPol
         /** 跟卡表 manifest 同一個 repo，理由一樣：raw 走 CDN、約快取 5 分鐘 */
         const val FEED_URL =
             "https://raw.githubusercontent.com/lungmark0618-collab/WSDeckBuilder-data/main/announcements.json"
-        private const val CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000
+        private const val CHECK_INTERVAL_MS = 15L * 60 * 1000
         private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     }
 
     fun setBadgeStyle(style: NotificationBadgeStyle) {
         prefs.notificationBadgeStyle = style
         _ui.update { it.copy(badgeStyle = style) }
+    }
+
+    fun markRead(item: Announcement) {
+        val ids = _ui.value.readIds + item.id
+        prefs.announcementReadIds = ids
+        _ui.update { it.copy(readIds = ids) }
     }
 
     fun markAllRead() {
@@ -110,15 +124,19 @@ class AnnouncementCenter(context: Context, private val networkPolicy: NetworkPol
         _ui.update { it.copy(deletedIds = ids) }
     }
 
-    /** App 啟動時呼叫，一天查一次，查不到就沿用快取（跟 DataUpdater.checkSilently 同款） */
+    /** 啟動或開啟列表時檢查，成功後 15 分鐘內沿用快取。 */
     suspend fun checkSilently() {
         val last = prefs.announcementLastCheckedAt
         if (last > 0 && System.currentTimeMillis() - last < CHECK_INTERVAL_MS) return
+        if (System.currentTimeMillis() - lastAttemptAt < 60_000) return
         if (!networkPolicy.ui.value.allowsAutomaticDownload) return
         check()
     }
 
     suspend fun check() {
+        if (!refreshMutex.tryLock()) return
+        lastAttemptAt = System.currentTimeMillis()
+        _ui.update { it.copy(isLoading = true) }
         try {
             val bytes = withContext(Dispatchers.IO) {
                 val request = Request.Builder()
@@ -132,13 +150,19 @@ class AnnouncementCenter(context: Context, private val networkPolicy: NetworkPol
                 }
             }
             val feed = cardJson.decodeFromString<AnnouncementFeed>(String(bytes))
-            if (feed.schemaVersion > SUPPORTED_SCHEMA_VERSION) return
+            if (feed.schemaVersion !in 1..SUPPORTED_SCHEMA_VERSION) throw IOException("不支援的公告格式")
             val sorted = feed.items.sortedByDescending { it.date }
             prefs.cachedAnnouncements = sorted
             prefs.announcementLastCheckedAt = System.currentTimeMillis()
-            _ui.update { it.copy(serverItems = sorted) }
+            _ui.update { it.copy(serverItems = sorted, errorMessage = null) }
+        } catch (e: CancellationException) {
+            lastAttemptAt = 0L
+            throw e
         } catch (e: Exception) {
-            // 靜默失敗，沿用快取內容——通知不值得為了查不到而跳錯誤打擾使用者
+            _ui.update { it.copy(errorMessage = "暫時無法更新通知，保留上次內容。") }
+        } finally {
+            _ui.update { it.copy(isLoading = false) }
+            refreshMutex.unlock()
         }
     }
 
@@ -158,17 +182,22 @@ class AnnouncementCenter(context: Context, private val networkPolicy: NetworkPol
             Announcement(
                 id = id,
                 date = today,
-                title = if (isNewTitle) "新增了「${item.titleName}」" else "「${item.titleName}」卡表已更新",
+                title = if (isNewTitle) "「${item.titleName}」新系列卡表可下載" else "「${item.titleName}」有卡表更新",
                 body = if (isNewTitle) {
-                    "可以在圖鑑分頁看到這部新收錄的作品。"
+                    "新系列卡表已上線。請到設定檢查並下載卡表，安裝後即可在圖鑑查看。"
                 } else {
                     "有新的翻譯或卡片內容，到設定頁按「檢查更新」即可下載。"
                 },
             )
         }
         if (added.isEmpty()) return
-        val updated = (existing + added).sortedByDescending { it.date }
+        val updated = compactLocalAnnouncements(existing + added)
         prefs.cachedLocalAnnouncements = updated
         _ui.update { it.copy(localItems = updated) }
     }
 }
+
+internal fun compactLocalAnnouncements(items: List<Announcement>): List<Announcement> =
+    items.groupBy { if (it.id.startsWith("data-update-")) it.id.substringBeforeLast("-") else it.id }
+        .values.map { group -> group.maxBy { it.id.substringAfterLast("-").toIntOrNull() ?: 0 } }
+        .sortedWith(compareByDescending<Announcement> { it.date }.thenByDescending { it.id })

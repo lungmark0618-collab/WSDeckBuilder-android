@@ -233,7 +233,7 @@ fun DeckListScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Icon(Icons.Filled.Style, contentDescription = null, modifier = Modifier.size(44.dp))
                     Text("還沒有牌組", style = MaterialTheme.typography.headlineSmall)
-                    Text("先建立牌組，再到圖鑑挑選卡片。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("先建立牌組，再點「加入卡片」挑選。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { showCreate = true }) { Text("建立第一副牌組") }
                     OutlinedButton(onClick = { showQRScanner = true }) { Text("掃描 QR Code 匯入") }
                 }

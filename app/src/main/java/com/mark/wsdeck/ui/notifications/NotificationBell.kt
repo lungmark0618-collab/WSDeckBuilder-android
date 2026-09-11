@@ -3,6 +3,11 @@ package com.mark.wsdeck.ui.notifications
 import com.mark.wsdeck.ui.shared.swipeBack
 import com.mark.wsdeck.ui.shared.SwipeBackAlertDialog as AlertDialog
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -83,10 +88,11 @@ private fun AnnouncementListSheet(center: AnnouncementCenter, onDismiss: () -> U
     val ui by center.ui.collectAsStateWithLifecycle()
     var confirmDeleteAll by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { center.markAllRead() }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { center.checkSilently() }
 
     ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.swipeBack(onBack = onDismiss)) {
-        Column(Modifier.padding(bottom = 24.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -98,8 +104,12 @@ private fun AnnouncementListSheet(center: AnnouncementCenter, onDismiss: () -> U
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 ) { Text("全部刪除") }
                 Text("通知", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.width(64.dp))
+                IconButton(onClick = { scope.launch { center.check() } }, enabled = !ui.isLoading) {
+                    Icon(Icons.Default.Refresh, "重新整理通知")
+                }
             }
+            TextButton(onClick = { center.markAllRead() }, enabled = ui.unreadCount > 0) { Text("全部標為已讀") }
+            ui.errorMessage?.let { Text(it, modifier = Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.bodySmall) }
             if (ui.items.isEmpty()) {
                 Text(
                     "目前沒有通知",
@@ -110,7 +120,7 @@ private fun AnnouncementListSheet(center: AnnouncementCenter, onDismiss: () -> U
             } else {
                 ui.items.forEach { item ->
                     key(item.id) {
-                        AnnouncementRow(item, onDelete = { center.delete(item) })
+                        AnnouncementRow(item, unread = ui.isUnread(item), onRead = { center.markRead(item) }, onDelete = { center.delete(item) })
                         HorizontalDivider()
                     }
                 }
@@ -139,7 +149,7 @@ private fun AnnouncementListSheet(center: AnnouncementCenter, onDismiss: () -> U
 /** 看完想清掉就往左滑刪除，對應 iOS 的 .swipeActions——刪除是永久的 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AnnouncementRow(item: Announcement, onDelete: () -> Unit) {
+private fun AnnouncementRow(item: Announcement, unread: Boolean, onRead: () -> Unit, onDelete: () -> Unit) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) {
@@ -174,8 +184,10 @@ private fun AnnouncementRow(item: Announcement, onDelete: () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
+                .clickable(onClickLabel = "標為已讀", onClick = onRead)
                 .padding(horizontal = 20.dp, vertical = 10.dp),
         ) {
+            if (unread) Box(Modifier.padding(top = 7.dp, end = 8.dp).size(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
             Column {
                 Text(item.title, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
