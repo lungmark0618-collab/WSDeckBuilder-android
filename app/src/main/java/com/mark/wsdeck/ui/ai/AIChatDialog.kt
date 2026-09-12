@@ -17,6 +17,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.mark.wsdeck.ui.shared.SwipeBackDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -124,8 +129,10 @@ private fun ChatBubble(message: AIChatMessage) {
                 if (message.isLoading) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
+                    // AI 回答常帶 **粗體** 這類 Markdown 語法，純文字顯示會看到
+                    // 一堆星號、像是壞掉——轉成 AnnotatedString 才會是真的粗體
                     Text(
-                        message.text,
+                        boldMarkdown(message.text),
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (isUser) MaterialTheme.colorScheme.onPrimary
                                else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -134,6 +141,23 @@ private fun ChatBubble(message: AIChatMessage) {
             }
         }
         if (!isUser) Spacer(Modifier.weight(1f, fill = false).widthIn(min = 40.dp))
+    }
+}
+
+/** 只處理 `**粗體**`，其餘語法（標題、清單記號）維持原樣顯示，對應 iOS 的
+ *  `.inlineOnlyPreservingWhitespace` 範圍 */
+private fun boldMarkdown(text: String): AnnotatedString = buildAnnotatedString {
+    var i = 0
+    while (i < text.length) {
+        val start = text.indexOf("**", i)
+        if (start == -1) { append(text.substring(i)); break }
+        val end = text.indexOf("**", start + 2)
+        if (end == -1) { append(text.substring(i)); break }
+        append(text.substring(i, start))
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+            append(text.substring(start + 2, end))
+        }
+        i = end + 2
     }
 }
 
