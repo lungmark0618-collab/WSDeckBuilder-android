@@ -18,14 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.outlined.PushPin
@@ -71,7 +66,6 @@ fun DeckListScreen(
 ) {
     val decks by repo.observeDecks().collectAsStateWithLifecycle(initialValue = emptyList())
     var showCreate by remember { mutableStateOf(false) }
-    var showAddMenu by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<DeckWithEntries?>(null) }
     var importResult by remember { mutableStateOf<DeckImporter.Result?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
@@ -178,55 +172,6 @@ fun DeckListScreen(
 
     Scaffold(
         topBar = { TopAppBar(navigationIcon = { SidebarMenuButton() }, title = { Text("牌組") }) },
-        floatingActionButton = {
-            Box {
-                FloatingActionButton(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    onClick = { showAddMenu = true },
-                    modifier = Modifier.onboardingAnchor(OnboardingStep.CREATE_DECK, onboarding),
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = "新增牌組")
-                }
-                DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("新增空牌組") },
-                        leadingIcon = { Icon(Icons.Filled.PostAdd, contentDescription = null) },
-                        onClick = { showAddMenu = false; showCreate = true },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("開啟相機掃描") },
-                        leadingIcon = { Icon(Icons.Filled.PhotoCamera, contentDescription = null) },
-                        onClick = { showAddMenu = false; showQRScanner = true },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("掃牌組圖片匯入") },
-                        leadingIcon = { Icon(Icons.Filled.PhotoLibrary, contentDescription = null) },
-                        onClick = {
-                            showAddMenu = false
-                            photoPicker.launch(
-                                androidx.activity.result.PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.ImageOnly,
-                                ),
-                            )
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("從檔案匯入牌表") },
-                        leadingIcon = { Icon(Icons.Filled.Folder, contentDescription = null) },
-                        onClick = {
-                            showAddMenu = false
-                            filePicker.launch(arrayOf("text/plain", "*/*"))
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("貼上牌表文字匯入") },
-                        leadingIcon = { Icon(Icons.Filled.ContentPaste, contentDescription = null) },
-                        onClick = { showAddMenu = false; showPasteImport = true },
-                    )
-                }
-            }
-        },
     ) { padding ->
         if (decks.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
@@ -234,7 +179,7 @@ fun DeckListScreen(
                     Icon(Icons.Filled.Style, contentDescription = null, modifier = Modifier.size(44.dp))
                     Text("還沒有牌組", style = MaterialTheme.typography.headlineSmall)
                     Text("先建立牌組，再點「加入卡片」挑選。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = { showCreate = true }) { Text("建立第一副牌組") }
+                    Button(onClick = { showCreate = true }, modifier = Modifier.onboardingAnchor(OnboardingStep.CREATE_DECK, onboarding)) { Text("建立第一副牌組") }
                     OutlinedButton(onClick = { showQRScanner = true }) { Text("掃描 QR Code 匯入") }
                 }
             }
@@ -250,7 +195,7 @@ fun DeckListScreen(
                             Text("我的牌組", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                             Text("${decks.size} 副牌組", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Button(onClick = { showCreate = true }) { Icon(Icons.Filled.Add, null); Text("建立") }
+                        Button(onClick = { showCreate = true }, modifier = Modifier.onboardingAnchor(OnboardingStep.CREATE_DECK, onboarding)) { Icon(Icons.Filled.Add, null); Text("建立") }
                     }
                     Text("點釘選加入首頁，更多選單可管理牌組", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))

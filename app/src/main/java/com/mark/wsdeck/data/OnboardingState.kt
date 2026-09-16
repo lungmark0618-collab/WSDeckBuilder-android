@@ -43,7 +43,7 @@ enum class OnboardingStep(val title: String, val body: String, val tab: Onboardi
     ),
     CREATE_DECK(
         "建立牌組",
-        "點右下角的＋，建立你的第一副牌組。",
+        "點「建立」按鈕，建立你的第一副牌組。",
         OnboardingTab.DECKS,
     ),
     PIN_DECKS(

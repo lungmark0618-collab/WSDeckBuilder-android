@@ -42,6 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mark.wsdeck.ui.shared.SwipeBackDialog as Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.mark.wsdeck.data.AnnouncementCenter
 import com.mark.wsdeck.data.CardRepository
 import com.mark.wsdeck.data.CardType
@@ -109,16 +112,15 @@ fun HomeScreen(
                 item.highlightsZH.any { it.contains(keyword, ignoreCase = true) }
         }
     }
-    // 輪播只挑有配圖、跟商品/卡表有關的公告——參考官網首頁「最新商品」跑馬燈的
-    // 做法，規則更新、賽事這類沒有視覺重點的公告不適合放大圖展示
+    // 大圖只收錄有配圖的商品資訊；活動、規則和卡表公告保留在下方最新動態。
     val heroItems = remember(filteredItems) {
         filteredItems.filter {
-            it.imageURL != null && ("商品情報" in it.categories || "カードリスト" in it.categories)
+            it.imageURL != null && ("商品情報" in it.categories)
         }.take(6)
     }
 
     LaunchedEffect(Unit) {
-        if (ui.items.isEmpty()) newsRepo.refresh()
+        newsRepo.refresh(force = false)
     }
 
     Scaffold(
@@ -174,6 +176,7 @@ fun HomeScreen(
                 item {
                     HeroCarousel(
                         heroItems, networkPolicy,
+                        isEnabled = selectedItem == null && !showingCategoryFilter,
                         modifier = Modifier,
                     ) { selectedItem = it }
                 }
@@ -416,9 +419,45 @@ private fun HeroCarousel(
     items: List<WSNewsItem>,
     networkPolicy: NetworkPolicy,
     modifier: Modifier = Modifier,
+    isEnabled: Boolean = true,
     onSelect: (WSNewsItem) -> Unit,
 ) {
     val pagerState = rememberPagerState(pageCount = { items.size })
+    LaunchedEffect(items.map { it.url }) { if (items.isNotEmpty()) pagerState.scrollToPage(0) }
+    var progress by remember { mutableFloatStateOf(0f) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, _ ->
+            resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(items.map { it.url }, isEnabled, resumed) {
+        progress = 0f
+        if (!isEnabled || !resumed || items.size < 2) return@LaunchedEffect
+        var startedAt: Long? = null
+        var previousPage = pagerState.settledPage
+        while (true) {
+            val now = withFrameNanos { it }
+            if (pagerState.isScrollInProgress || previousPage != pagerState.settledPage) {
+                startedAt = null
+                progress = 0f
+                previousPage = pagerState.settledPage
+                continue
+            }
+            val start = startedAt ?: now.also { startedAt = it }
+            progress = ((now - start) / 6_000_000_000f).coerceIn(0f, 1f)
+            if (progress >= 1f) {
+                progress = 0f
+                pagerState.animateScrollToPage((pagerState.settledPage + 1) % items.size)
+                previousPage = pagerState.settledPage
+                startedAt = null
+                progress = 0f
+            }
+        }
+    }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HorizontalPager(state = pagerState) { page ->
             val item = items[page]
@@ -435,10 +474,15 @@ private fun HeroCarousel(
                     val selected = i == pagerState.currentPage
                     Box(
                         Modifier
-                            .size(width = if (selected) 16.dp else 6.dp, height = 6.dp)
+                            .size(width = if (selected) 28.dp else 6.dp, height = 6.dp)
                             .clip(CircleShape)
-                            .background(if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)),
-                    )
+                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)),
+                    ) {
+                        if (selected) Box(
+                            Modifier.fillMaxHeight().fillMaxWidth(progress)
+                                .background(MaterialTheme.colorScheme.onSurface),
+                        )
+                    }
                 }
             }
         }
@@ -460,7 +504,7 @@ private fun HeroSlide(item: WSNewsItem, networkPolicy: NetworkPolicy, onClick: (
         Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(24.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(item.categories.firstOrNull()?.let { NewsCategory.labelZH(it) } ?: "商品資訊",
+                Text("商品資訊",
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(item.displayTitle, style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface,

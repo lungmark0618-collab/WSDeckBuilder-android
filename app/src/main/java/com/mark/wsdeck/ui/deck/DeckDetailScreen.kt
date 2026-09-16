@@ -3,6 +3,8 @@ package com.mark.wsdeck.ui.deck
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,6 +12,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
@@ -297,23 +303,48 @@ fun DeckDetailScreen(
     }
 
     if (showShareOptions) {
-        ModalBottomSheet(onDismissRequest = { showShareOptions = false }) {
-            Column(Modifier.padding(bottom = 24.dp)) {
-                ListItem(
-                    headlineContent = { Text("生成 QR Code") },
-                    modifier = Modifier.clickable {
-                        showShareOptions = false
-                        showQRPresent = true
-                    },
-                )
-                ListItem(
-                    headlineContent = { Text("匯出牌組圖片（可掃回）") },
-                    modifier = Modifier.clickable {
-                        showShareOptions = false
-                        exportImage()
-                    },
-                )
+        ModalBottomSheet(
+            onDismissRequest = { showShareOptions = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.Top) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("分享牌組", style = MaterialTheme.typography.headlineSmall)
+                        Text(deck.deck.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = { showShareOptions = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "關閉分享選單")
+                    }
+                }
+                ShareOptionRow("出示 QR Code", "讓對方掃描，直接匯入牌組", Icons.Default.QrCode) {
+                    showShareOptions = false
+                    showQRPresent = true
+                }
+                ShareOptionRow("匯出牌組圖片", "分享完整牌表，圖片內含可匯入的 QR Code", Icons.Default.Image) {
+                    showShareOptions = false
+                    exportImage()
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun ShareOptionRow(title: String, detail: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
         }
     }
 }
