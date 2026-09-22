@@ -66,6 +66,8 @@ class CardRepository(private val context: Context) {
         val cardById: Map<String, Card> = emptyMap(),
         val allTraits: List<String> = emptyList(),
         val relationIndex: Map<String, List<CardRelation>> = emptyMap(),
+        /** titleCode → 該作品最新一波的商品代碼數字，見 newestSetNumber() 的說明 */
+        val newestSetNumberByTitleCode: Map<String, Int> = emptyMap(),
     )
 
     /** 能力文字裡以「」指名的關聯卡片（羈絆／CX連動／被指名），對應 iOS CardDatabase.relations(for:) */
@@ -135,6 +137,16 @@ class CardRepository(private val context: Context) {
         val sortedSets = sets.sortedBy { it.titleCode }
         val (browsableSets, productCodes) = buildBrowsableSets(sortedSets, cards, titleByCardId, waveNameOverrides)
 
+        // 算一次存起來，不然「由新到舊」排序每次都要對每個作品各掃一輪全部
+        // 卡片——資料量還小時不明顯，卡表膨脹到三萬多張後排序一次要掃好幾百萬
+        // 次，主執行緒卡住到被系統判定沒回應而關掉（對應 iOS 同一處修正）
+        val newestByTitle = mutableMapOf<String, Int>()
+        for (c in cards) {
+            val titleCode = titleByCardId[c.id] ?: continue
+            val n = numericSuffix(c.productCode)
+            if (n > (newestByTitle[titleCode] ?: 0)) newestByTitle[titleCode] = n
+        }
+
         snapshot = Snapshot(
             cards = sortCards(cards, titleByCardId),
             sets = sortedSets,
@@ -144,6 +156,7 @@ class CardRepository(private val context: Context) {
             cardById = cardById,
             allTraits = cards.flatMap { it.traitsJP }.distinct().sorted(),
             relationIndex = buildCardRelations(cards),
+            newestSetNumberByTitleCode = newestByTitle,
         )
         loadError = null
         true
@@ -272,10 +285,9 @@ class CardRepository(private val context: Context) {
     /** 這部作品目前收錄最新一波的商品代碼數字，供「探索作品」畫面「由新到舊」
      *  排序用，對應 iOS CardDatabase.newestSetNumber(forTitleCode:)。Bushiroad
      *  的彈次編號（如 S108、S136）全系列共用同一個流水號，數字愈大代表愈晚
-     *  發售，不必額外維護發售日期欄位 */
+     *  發售，不必額外維護發售日期欄位。查表 O(1)，見 Snapshot 欄位註解 */
     fun newestSetNumber(titleCode: String): Int =
-        snapshot.cards.filter { snapshot.titleByCardId[it.id] == titleCode }
-            .maxOfOrNull { numericSuffix(it.productCode) } ?: 0
+        snapshot.newestSetNumberByTitleCode[titleCode] ?: 0
 
     /**
      * 關鍵字比對依「像不像使用者要找的那張卡」分等第排序，不是比對到就照原始
