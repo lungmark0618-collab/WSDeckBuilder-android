@@ -9,9 +9,11 @@ import kotlinx.coroutines.flow.Flow
  * 純邏輯（依卡片彙總、算缺卡）另外放在 CollectionStore.kt，方便單元測試。
  */
 class CollectionRepository(context: Context) {
+    // 理由同 DeckRepository：把「允許整個清掉重建」限定在版本 1 這個已知起點，
+    // 之後漏寫 migration 會直接丟例外，不會悄悄把使用者資料清空
     private val db = Room.databaseBuilder(
         context.applicationContext, AppDatabase::class.java, "wsdeck.db",
-    ).addMigrations(MIGRATION_2_3).fallbackToDestructiveMigration(true).build()
+    ).addMigrations(MIGRATION_2_3).fallbackToDestructiveMigrationFrom(true, 1).build()
     private val dao = db.collectionDao()
 
     fun observeAll(): Flow<List<CollectionEntryEntity>> = dao.observeAll()

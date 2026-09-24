@@ -48,8 +48,12 @@ data class Card(
     /** 收錄來源（補充包／預組）；舊卡表沒有這欄位就當缺值，不擋整份解析 */
     val source: CardSource? = null,
 ) {
-    /** 普卡固定是第一個刷版 */
-    val defaultPrinting: Printing get() = printings.first()
+    /** 普卡固定是第一個刷版。正常情況下 printings 一定非空——發佈前的
+     *  check_cards.py 會擋下沒有任何刷版的卡片，但那道檢查在資料管線那一側，
+     *  client 端不該盲目相信它永遠沒有漏網之魚：萬一真的漏了一張，這裡退回
+     *  一個空白刷版，讓那一張卡的圖顯示不出來，而不是整個圖鑑直接崩潰 */
+    val defaultPrinting: Printing
+        get() = printings.firstOrNull() ?: Printing(id = id, rarity = "", imageURL = "")
 
     /**
      * 商品代碼：卡號最後一個「-」前面的部分（如 "SFN/S108-024" → "SFN/S108"）。

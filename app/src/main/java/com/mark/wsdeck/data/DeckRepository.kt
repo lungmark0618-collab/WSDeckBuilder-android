@@ -6,9 +6,14 @@ import kotlinx.coroutines.flow.Flow
 
 /** Room 存取的薄包裝，把「調整張數、歸零即刪」這類規則放在同一個地方 */
 class DeckRepository(context: Context) {
+    // fallbackToDestructiveMigration(true)（不分版本、缺 migration 就整個清掉
+    // 重建）已經在 1→2 那次讓使用者資料消失過一次（見 MIGRATION_2_3 的註解）。
+    // 只把「允許整個清掉重建」限定在版本 1 這個已知、已經接受過的起點，之後
+    // 任何一次漏寫 migration 都會直接丟例外讓開發階段就發現，而不是悄悄把
+    // 現有使用者的牌組和收藏資料清空
     private val db = Room.databaseBuilder(
         context.applicationContext, AppDatabase::class.java, "wsdeck.db",
-    ).addMigrations(MIGRATION_2_3).fallbackToDestructiveMigration(true).build()
+    ).addMigrations(MIGRATION_2_3).fallbackToDestructiveMigrationFrom(true, 1).build()
     private val dao = db.deckDao()
 
     fun observeDecks(): Flow<List<DeckWithEntries>> = dao.observeDecks()
